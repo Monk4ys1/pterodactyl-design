@@ -5,4 +5,4 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$HERE/install.sh" ]; then
     exec bash "$HERE/install.sh" --uninstall "$@"
 fi
-exec bash <(curl -fsSL "https://raw.githubusercontent.com/Monk4ys1/pterodactyl-design/main/install.sh") --uninstall "$@"
+exec bash <(curl -fsSL "https://raw.githubusercontent.com/Monk4ys1/pterodactyl-design/HEAD/install.sh") --uninstall "$@"

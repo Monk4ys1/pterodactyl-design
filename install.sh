@@ -3,7 +3,7 @@
 #  Nebula · Ein-Befehl-Installer fuer das Pterodactyl Panel
 #
 #  Installation:
-#    bash <(curl -fsSL https://raw.githubusercontent.com/Monk4ys1/pterodactyl-design/main/install.sh)
+#    bash <(curl -fsSL https://raw.githubusercontent.com/Monk4ys1/pterodactyl-design/HEAD/install.sh)
 #
 #  Weitere Befehle:
 #    ./install.sh --update      Theme aktualisieren
@@ -14,7 +14,7 @@
 #
 #  Optionen:
 #    --path <verzeichnis>   Pfad zum Panel (Standard: automatisch erkannt)
-#    --branch <name>        Git-Branch der Quelle
+#    --branch <name>        Git-Ref der Quelle (Branch, Tag oder Commit)
 #    --yes                  Keine Rueckfragen
 #    --no-backup            Kein Backup anlegen (nicht empfohlen)
 #    --no-cli               Den Befehl "nebula" nicht installieren
@@ -26,8 +26,8 @@ set -euo pipefail
 REPO="Monk4ys1/pterodactyl-design"
 THEME_SLUG="nebula"
 THEME_NAME="Nebula"
-DEFAULT_BRANCH="main"
-FALLBACK_BRANCHES=("main" "master" "claude/pterodactyl-design-features-w3r8mz")
+DEFAULT_BRANCH="HEAD"                     # HEAD = Standardbranch des Repositories
+FALLBACK_BRANCHES=("HEAD" "main" "master")
 LIB_DIR="/usr/local/lib/nebula-theme"
 CLI_PATH="/usr/local/bin/nebula"
 BACKUP_ROOT="/var/backups/nebula"
@@ -38,7 +38,7 @@ usage() {
 Nebula – Design- und Feature-Paket fuer das Pterodactyl Panel
 
 Installation
-  bash <(curl -fsSL https://raw.githubusercontent.com/Monk4ys1/pterodactyl-design/main/install.sh)
+  bash <(curl -fsSL https://raw.githubusercontent.com/Monk4ys1/pterodactyl-design/HEAD/install.sh)
 
 Befehle
   --install            Theme installieren (Standard)
@@ -50,7 +50,7 @@ Befehle
 
 Optionen
   --path <verzeichnis> Pfad zum Panel (Standard: automatisch erkannt)
-  --branch <name>      Git-Branch der Quelle
+  --branch <name>      Git-Ref der Quelle (Branch, Tag oder Commit)
   --yes, -y            Keine Rueckfragen stellen
   --no-backup          Kein Backup anlegen (nicht empfohlen)
   --no-cli             Den Befehl "nebula" nicht installieren
@@ -180,18 +180,22 @@ resolve_source() {
         [ "$b" = "$BRANCH" ] || branches+=("$b")
     done
 
+    local url
     for b in "${branches[@]}"; do
-        info "Lade Quelle von GitHub (Branch: $b) …"
-        if curl -fsSL "https://codeload.github.com/$REPO/tar.gz/refs/heads/$b" \
-            | tar -xz -C "$SRC_TMP" --strip-components=1 2>/dev/null; then
-            if [ -d "$SRC_TMP/theme/css" ]; then
-                SRC="$SRC_TMP"
-                BRANCH="$b"
-                ok "Quelle geladen (Branch: $b)"
-                return
+        info "Lade Quelle von GitHub (Ref: $b) …"
+        # Erst als Branch, dann als beliebiger Ref (HEAD, Tag, Commit).
+        for url in "https://codeload.github.com/$REPO/tar.gz/refs/heads/$b" \
+                   "https://codeload.github.com/$REPO/tar.gz/$b"; do
+            if curl -fsSL "$url" | tar -xz -C "$SRC_TMP" --strip-components=1 2>/dev/null; then
+                if [ -d "$SRC_TMP/theme/css" ]; then
+                    SRC="$SRC_TMP"
+                    BRANCH="$b"
+                    ok "Quelle geladen (Ref: $b)"
+                    return
+                fi
             fi
-        fi
-        rm -rf "${SRC_TMP:?}/"* 2>/dev/null || true
+            rm -rf "${SRC_TMP:?}/"* 2>/dev/null || true
+        done
     done
 
     die "Quelle konnte nicht geladen werden. Netzwerk pruefen oder --path/--branch angeben."

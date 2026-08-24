@@ -15,7 +15,7 @@ Ohne Rebuild des Frontends, jederzeit rückstandslos entfernbar.
 ## Installation
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Monk4ys1/pterodactyl-design/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Monk4ys1/pterodactyl-design/HEAD/install.sh)
 ```
 
 Das war's. Der Installer findet dein Panel selbst, legt vorher ein Backup an und
@@ -23,6 +23,18 @@ sagt dir am Ende, was du drücken kannst.
 
 > Falls `curl` fehlt: `apt install curl` bzw. `dnf install curl`.
 > Der Befehl muss als `root` laufen (oder mit `sudo bash <(...)`).
+
+> **Solange dieses Repository privat ist**, kann `curl` die Datei nicht ohne
+> Zugangsdaten laden. Dann entweder das Repository oeffentlich schalten – danach
+> funktioniert der Ein-Zeiler unveraendert – oder einmalig klonen:
+>
+> ```bash
+> git clone https://github.com/Monk4ys1/pterodactyl-design.git
+> sudo bash pterodactyl-design/install.sh
+> ```
+>
+> Der Installer erkennt, dass er aus einem lokalen Verzeichnis läuft, und lädt
+> dann nichts nach.
 
 Danach im Browser einmal mit <kbd>Strg</kbd>+<kbd>F5</kbd> neu laden.
 
