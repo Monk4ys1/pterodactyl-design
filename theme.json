@@ -1,0 +1,22 @@
+{
+  "name": "Nebula",
+  "slug": "nebula",
+  "version": "1.0.0",
+  "description": "Ein vollstaendiges Redesign fuer das Pterodactyl Panel inkl. Command-Palette, Live-Charts, Konsolen-Tools, Themes und Light-Mode.",
+  "author": "Monk4ys1",
+  "repository": "https://github.com/Monk4ys1/pterodactyl-design",
+  "license": "MIT",
+  "compatibility": {
+    "panel": [ "1.11.x", "1.10.x" ],
+    "tested": [ "1.11.10", "1.11.9", "1.11.8", "1.11.7" ],
+    "php": ">=8.1",
+    "rebuild_required": false
+  },
+  "install": {
+    "asset_dir": "public/themes/nebula",
+    "targets": [
+      "resources/views/templates/wrapper.blade.php",
+      "resources/views/layouts/admin.blade.php"
+    ]
+  }
+}

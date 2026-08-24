@@ -1,0 +1,200 @@
+/* =========================================================================
+   Nebula · 10-base.css
+   Grundlagen: Body, Hintergrund-Canvas, Scrollbars, Fokus, Typografie und
+   die Neuzuordnung der Tailwind-Farbklassen, die Pterodactyl im gesamten
+   Frontend benutzt.
+   ========================================================================= */
+
+/* Die Grundfarbe liegt bewusst auf <html>: von dort wird sie auf die
+   Zeichenflaeche des Viewports uebertragen. Der <body> bleibt durchsichtig,
+   damit die Verlaufsebene (body::before, z-index: -2) darueber sichtbar wird –
+   ein opaker Body-Hintergrund wuerde sie verdecken. */
+html {
+    background-color: var(--ptd-bg) !important;
+    color: var(--ptd-text);
+    font-family: var(--ptd-font);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+body {
+    background-color: transparent !important;
+    color: var(--ptd-text);
+    font-family: var(--ptd-font);
+    min-height: 100vh;
+    position: relative;
+    letter-spacing: -0.005em;
+}
+
+/* Pterodactyl setzt am <body> eine Farbklasse (bg-neutral-800). Die wuerde die
+   Verlaufsebene wieder zudecken und wird deshalb hier neutralisiert. */
+body[class*="bg-"] { background-color: transparent !important; }
+
+/* --- Hintergrund-Ebene ------------------------------------------------- */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    opacity: var(--ptd-canvas-opacity);
+    background:
+        radial-gradient(120% 85% at 12% -10%, var(--ptd-canvas-1) 0%, transparent 55%),
+        radial-gradient(100% 70% at 92% 4%, var(--ptd-canvas-2) 0%, transparent 52%),
+        radial-gradient(90% 80% at 50% 115%, color-mix(in srgb, var(--ptd-accent) 14%, transparent) 0%, transparent 60%);
+    transition: opacity .4s ease;
+}
+
+/* Feines Rauschen gegen Banding in den Verlaeufen */
+body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: .028;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+html[data-ptd-bg="plain"] body::before { opacity: 0; }
+html[data-ptd-bg="plain"] body::after  { opacity: 0; }
+
+/* Benutzerdefiniertes Hintergrundbild (--ptd-bg-image wird per JS gesetzt) */
+html[data-ptd-bg="image"] body::before {
+    background-image: var(--ptd-bg-image);
+    background-size: cover;
+    background-position: center;
+    opacity: 1;
+}
+html[data-ptd-bg="image"] body::after {
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--ptd-bg) 72%, transparent),
+        color-mix(in srgb, var(--ptd-bg) 92%, transparent));
+    opacity: 1;
+    mix-blend-mode: normal;
+}
+
+/* --- Scrollbars --------------------------------------------------------- */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ptd-surface-3) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--ptd-surface-3);
+    border-radius: var(--ptd-r-pill);
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--ptd-accent-line); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* --- Auswahl & Fokus ---------------------------------------------------- */
+::selection {
+    background: color-mix(in srgb, var(--ptd-accent) 38%, transparent);
+    color: var(--ptd-text);
+}
+
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--ptd-accent);
+    outline-offset: 2px;
+    border-radius: var(--ptd-r-sm);
+}
+
+/* =========================================================================
+   Neuzuordnung der Tailwind-Palette von Pterodactyl
+   Das Panel nutzt diese Utility-Klassen flaechendeckend; ueber die
+   Ueberschreibung faerben wir das komplette UI ohne Rebuild um.
+   ========================================================================= */
+
+/* Flaechen */
+.bg-black                                  { background-color: var(--ptd-bg-alt) !important; }
+.bg-neutral-900, .bg-gray-900              { background-color: var(--ptd-surface) !important; }
+.bg-neutral-800, .bg-gray-800              { background-color: var(--ptd-bg) !important; }
+.bg-neutral-700, .bg-gray-700              { background-color: var(--ptd-surface-2) !important; }
+.bg-neutral-600, .bg-gray-600              { background-color: var(--ptd-surface-3) !important; }
+.bg-neutral-500, .bg-gray-500              { background-color: var(--ptd-surface-3) !important; }
+.bg-neutral-400, .bg-gray-400              { background-color: color-mix(in srgb, var(--ptd-surface-3) 70%, var(--ptd-line-strong)) !important; }
+
+.hover\:bg-neutral-800:hover, .hover\:bg-gray-800:hover { background-color: var(--ptd-surface-2) !important; }
+.hover\:bg-neutral-700:hover, .hover\:bg-gray-700:hover { background-color: var(--ptd-surface-3) !important; }
+.hover\:bg-neutral-600:hover, .hover\:bg-gray-600:hover {
+    background-color: color-mix(in srgb, var(--ptd-surface-3) 80%, var(--ptd-accent)) !important;
+}
+
+/* Text */
+.text-neutral-50,  .text-gray-50           { color: var(--ptd-text) !important; }
+.text-neutral-100, .text-gray-100          { color: var(--ptd-text) !important; }
+.text-neutral-200, .text-gray-200          { color: var(--ptd-text-soft) !important; }
+.text-neutral-300, .text-gray-300          { color: var(--ptd-text-soft) !important; }
+.text-neutral-400, .text-gray-400          { color: var(--ptd-muted) !important; }
+.text-neutral-500, .text-gray-500          { color: var(--ptd-muted) !important; }
+.text-neutral-600, .text-gray-600          { color: var(--ptd-faint) !important; }
+.text-neutral-700, .text-gray-700          { color: var(--ptd-faint) !important; }
+.text-white                                { color: var(--ptd-text) !important; }
+
+/* Rahmen */
+.border-neutral-500, .border-gray-500,
+.border-neutral-600, .border-gray-600,
+.border-neutral-700, .border-gray-700,
+.border-neutral-800, .border-gray-800,
+.border-neutral-900, .border-gray-900      { border-color: var(--ptd-line) !important; }
+.border-black                              { border-color: var(--ptd-line-strong) !important; }
+
+/* Akzentfarbe des Panels (primary) */
+.bg-primary-400, .bg-primary-500,
+.bg-primary-600, .bg-primary-700           { background-color: var(--ptd-accent) !important; }
+.hover\:bg-primary-500:hover,
+.hover\:bg-primary-600:hover,
+.hover\:bg-primary-700:hover               { background-color: color-mix(in srgb, var(--ptd-accent) 82%, #fff) !important; }
+.text-primary-100, .text-primary-200,
+.text-primary-300, .text-primary-400,
+.text-primary-500, .text-primary-600       { color: var(--ptd-accent) !important; }
+.border-primary-400, .border-primary-500,
+.border-primary-600                        { border-color: var(--ptd-accent) !important; }
+
+/* Semantische Farben harmonisieren */
+.bg-green-500, .bg-green-600   { background-color: var(--ptd-ok) !important; }
+.text-green-400, .text-green-500 { color: var(--ptd-ok) !important; }
+.bg-red-500, .bg-red-600       { background-color: var(--ptd-danger) !important; }
+.text-red-400, .text-red-500   { color: var(--ptd-danger) !important; }
+.bg-yellow-500, .bg-yellow-600 { background-color: var(--ptd-warn) !important; }
+.text-yellow-400, .text-yellow-500 { color: var(--ptd-warn) !important; }
+.bg-cyan-500, .bg-cyan-600     { background-color: var(--ptd-info) !important; }
+.text-cyan-400, .text-cyan-500 { color: var(--ptd-info) !important; }
+
+/* Schatten weicher und farbiger */
+.shadow, .shadow-md   { box-shadow: var(--ptd-shadow) !important; }
+.shadow-lg, .shadow-xl { box-shadow: var(--ptd-shadow-lg) !important; }
+.shadow-sm            { box-shadow: var(--ptd-shadow-sm) !important; }
+
+/* Radien global anheben */
+.rounded      { border-radius: var(--ptd-r-sm) !important; }
+.rounded-md   { border-radius: var(--ptd-r-sm) !important; }
+.rounded-lg   { border-radius: var(--ptd-r) !important; }
+.rounded-xl   { border-radius: var(--ptd-r-lg) !important; }
+.rounded-t    { border-radius: var(--ptd-r-sm) var(--ptd-r-sm) 0 0 !important; }
+.rounded-b    { border-radius: 0 0 var(--ptd-r-sm) var(--ptd-r-sm) !important; }
+
+/* --- Typografie --------------------------------------------------------- */
+h1, h2, h3, h4, h5, h6 { letter-spacing: -0.02em; font-weight: 650; }
+
+code, pre, kbd, samp, .font-mono { font-family: var(--ptd-mono); font-variant-ligatures: none; }
+
+a { transition: color .16s ease; }
+
+/* --- Ladebalken bei Routenwechsel --------------------------------------- */
+#ptd-progress {
+    position: fixed;
+    top: 0; left: 0;
+    height: 2px;
+    width: 0;
+    z-index: 2147483000;
+    background: linear-gradient(90deg, var(--ptd-accent), var(--ptd-accent-2));
+    box-shadow: 0 0 12px var(--ptd-glow);
+    transition: width .25s ease, opacity .3s ease;
+    pointer-events: none;
+}

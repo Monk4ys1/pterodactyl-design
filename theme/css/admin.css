@@ -1,0 +1,385 @@
+/* =========================================================================
+   Nebula · admin.css
+   Neugestaltung des Pterodactyl-Adminbereichs (AdminLTE 2).
+   Wird ausschliesslich in resources/views/layouts/admin.blade.php geladen.
+   ========================================================================= */
+
+html {
+    background: var(--ptd-bg) !important;
+}
+
+body.skin-blue,
+body.sidebar-mini,
+body.hold-transition {
+    background: var(--ptd-bg) !important;
+    color: var(--ptd-text) !important;
+    font-family: var(--ptd-font) !important;
+}
+
+.wrapper, .content-wrapper, .main-footer {
+    background: transparent !important;
+    color: var(--ptd-text);
+}
+
+.content-wrapper { min-height: 100vh; }
+
+/* =========================================================================
+   Kopfleiste
+   ========================================================================= */
+
+.main-header .navbar,
+.main-header .logo {
+    background: var(--ptd-surface-glass) !important;
+    -webkit-backdrop-filter: blur(var(--ptd-blur)) saturate(160%);
+    backdrop-filter: blur(var(--ptd-blur)) saturate(160%);
+    border-bottom: 1px solid var(--ptd-line) !important;
+    box-shadow: none !important;
+    transition: none !important;
+}
+
+.main-header .logo {
+    font-weight: 700 !important;
+    letter-spacing: -.02em;
+    border-right: 1px solid var(--ptd-line) !important;
+}
+.main-header .logo:hover { background: var(--ptd-surface-2) !important; }
+.main-header .logo .logo-lg,
+.main-header .logo .logo-mini {
+    background: linear-gradient(100deg, var(--ptd-text), var(--ptd-accent) 60%, var(--ptd-accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.main-header .navbar .nav > li > a { color: var(--ptd-muted) !important; }
+.main-header .navbar .nav > li > a:hover,
+.main-header .navbar .nav > li > a:focus,
+.main-header .navbar .nav > .open > a {
+    background: var(--ptd-surface-3) !important;
+    color: var(--ptd-text) !important;
+}
+.main-header .sidebar-toggle { color: var(--ptd-muted) !important; }
+.main-header .sidebar-toggle:hover { background: var(--ptd-surface-3) !important; color: var(--ptd-text) !important; }
+
+/* =========================================================================
+   Seitenleiste
+   ========================================================================= */
+
+.main-sidebar, .left-side {
+    background: var(--ptd-surface) !important;
+    border-right: 1px solid var(--ptd-line);
+}
+
+.sidebar-menu > li > a {
+    color: var(--ptd-muted) !important;
+    border-left: 3px solid transparent !important;
+    border-radius: 0 var(--ptd-r-pill) var(--ptd-r-pill) 0;
+    margin-right: .6rem;
+    font-weight: 550;
+    transition: background-color .16s ease, color .16s ease, border-color .16s ease;
+}
+.sidebar-menu > li > a:hover {
+    background: var(--ptd-surface-2) !important;
+    color: var(--ptd-text) !important;
+}
+.sidebar-menu > li.active > a,
+.sidebar-menu > li.menu-open > a {
+    background: var(--ptd-accent-soft) !important;
+    color: var(--ptd-accent) !important;
+    border-left-color: var(--ptd-accent) !important;
+}
+.sidebar-menu > li > a > .fa,
+.sidebar-menu > li > a > i { width: 22px; text-align: center; }
+
+.sidebar-menu .header {
+    background: transparent !important;
+    color: var(--ptd-faint) !important;
+    font-size: .62rem !important;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    padding: 1.1rem 1rem .4rem !important;
+}
+
+.sidebar-menu .treeview-menu { background: var(--ptd-bg-alt) !important; }
+.sidebar-menu .treeview-menu > li > a { color: var(--ptd-muted) !important; }
+.sidebar-menu .treeview-menu > li.active > a,
+.sidebar-menu .treeview-menu > li > a:hover { color: var(--ptd-accent) !important; }
+
+.user-panel { border-bottom: 1px solid var(--ptd-line); padding-bottom: 1rem; }
+.user-panel > .info, .user-panel > .info > p { color: var(--ptd-text) !important; }
+.user-panel > .image > img { border: 2px solid var(--ptd-accent-line); }
+
+/* =========================================================================
+   Inhaltskopf & Breadcrumb
+   ========================================================================= */
+
+.content-header { padding: 1.4rem 1.2rem .4rem !important; }
+.content-header > h1 {
+    font-size: 1.5rem !important;
+    font-weight: 700;
+    letter-spacing: -.025em;
+    color: var(--ptd-text) !important;
+}
+.content-header > h1 > small {
+    color: var(--ptd-muted) !important;
+    font-size: .8rem;
+    margin-left: .55rem;
+    font-weight: 450;
+}
+
+.content-header > .breadcrumb {
+    background: var(--ptd-surface-2) !important;
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r-pill) !important;
+    padding: .3rem .85rem !important;
+    top: 1.5rem !important;
+}
+.content-header > .breadcrumb > li > a { color: var(--ptd-muted) !important; }
+.content-header > .breadcrumb > li > a:hover { color: var(--ptd-accent) !important; }
+.content-header > .breadcrumb > .active { color: var(--ptd-text) !important; }
+
+/* =========================================================================
+   Boxen
+   ========================================================================= */
+
+.box {
+    background: var(--ptd-surface) !important;
+    border: 1px solid var(--ptd-line) !important;
+    border-top: 1px solid var(--ptd-line) !important;
+    border-radius: var(--ptd-r) !important;
+    box-shadow: var(--ptd-shadow-sm) !important;
+    overflow: hidden;
+}
+.box.box-primary { border-top: 2px solid var(--ptd-accent) !important; }
+.box.box-danger  { border-top: 2px solid var(--ptd-danger) !important; }
+.box.box-success { border-top: 2px solid var(--ptd-ok) !important; }
+.box.box-warning { border-top: 2px solid var(--ptd-warn) !important; }
+.box.box-info    { border-top: 2px solid var(--ptd-info) !important; }
+
+.box-header {
+    background: linear-gradient(180deg, var(--ptd-surface-2), var(--ptd-surface)) !important;
+    border-bottom: 1px solid var(--ptd-line) !important;
+    color: var(--ptd-text) !important;
+    padding: .9rem 1.1rem !important;
+}
+.box-header .box-title { font-weight: 650 !important; font-size: .95rem !important; letter-spacing: -.01em; }
+.box-header .description, .box-header small { color: var(--ptd-muted) !important; }
+.box-body, .box-footer { background: transparent !important; color: var(--ptd-text-soft) !important; }
+.box-footer { border-top: 1px solid var(--ptd-line) !important; }
+
+/* Kennzahlen-Kacheln */
+.small-box, .info-box {
+    background: var(--ptd-surface) !important;
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r) !important;
+    box-shadow: var(--ptd-shadow-sm) !important;
+    color: var(--ptd-text) !important;
+    overflow: hidden;
+    transition: transform .2s ease, border-color .2s ease;
+}
+.small-box:hover, .info-box:hover { transform: translateY(-2px); border-color: var(--ptd-accent-line); }
+.small-box > .inner h3, .info-box-number { color: var(--ptd-text) !important; font-weight: 700; }
+.small-box > .inner p, .info-box-text { color: var(--ptd-muted) !important; }
+.small-box .icon { color: var(--ptd-accent) !important; opacity: .18; }
+.small-box > .small-box-footer {
+    background: var(--ptd-surface-2) !important;
+    color: var(--ptd-muted) !important;
+    border-top: 1px solid var(--ptd-line);
+}
+.small-box > .small-box-footer:hover { color: var(--ptd-accent) !important; }
+.info-box-icon { background: var(--ptd-accent-soft) !important; color: var(--ptd-accent) !important; border-radius: var(--ptd-r) 0 0 var(--ptd-r); }
+
+/* =========================================================================
+   Tabs
+   ========================================================================= */
+
+.nav-tabs-custom {
+    background: var(--ptd-surface) !important;
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r) !important;
+    box-shadow: var(--ptd-shadow-sm) !important;
+    overflow: hidden;
+}
+.nav-tabs-custom > .nav-tabs {
+    background: var(--ptd-surface-2) !important;
+    border-bottom: 1px solid var(--ptd-line) !important;
+}
+.nav-tabs-custom > .nav-tabs > li > a { color: var(--ptd-muted) !important; border: 0 !important; font-weight: 550; }
+.nav-tabs-custom > .nav-tabs > li > a:hover { color: var(--ptd-text) !important; background: var(--ptd-surface-3) !important; }
+.nav-tabs-custom > .nav-tabs > li.active { border-top-color: var(--ptd-accent) !important; }
+.nav-tabs-custom > .nav-tabs > li.active > a {
+    background: var(--ptd-surface) !important;
+    color: var(--ptd-accent) !important;
+}
+.tab-content { background: transparent !important; color: var(--ptd-text-soft); }
+
+/* =========================================================================
+   Tabellen
+   ========================================================================= */
+
+.table { color: var(--ptd-text-soft) !important; margin-bottom: 0; }
+.table > thead > tr > th {
+    background: var(--ptd-surface-2) !important;
+    color: var(--ptd-muted) !important;
+    border-bottom: 1px solid var(--ptd-line) !important;
+    border-top: 0 !important;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.table > tbody > tr > td { border-top: 1px solid var(--ptd-line) !important; vertical-align: middle; }
+.table-hover > tbody > tr:hover { background: var(--ptd-surface-2) !important; }
+.table-striped > tbody > tr:nth-of-type(odd) { background: color-mix(in srgb, var(--ptd-surface-2) 55%, transparent) !important; }
+.table > tbody > tr > td a { color: var(--ptd-accent) !important; }
+
+/* =========================================================================
+   Formulare
+   ========================================================================= */
+
+.form-control, .input-group-addon, .select2-container--default .select2-selection--single,
+.select2-container--default .select2-selection--multiple {
+    background: var(--ptd-surface-3) !important;
+    border: 1px solid var(--ptd-line) !important;
+    border-radius: var(--ptd-r-sm) !important;
+    color: var(--ptd-text) !important;
+    box-shadow: none !important;
+    transition: border-color .18s ease, box-shadow .18s ease;
+}
+.form-control:focus {
+    border-color: var(--ptd-accent) !important;
+    box-shadow: var(--ptd-ring) !important;
+}
+.form-control::placeholder { color: var(--ptd-faint) !important; }
+.control-label, label { color: var(--ptd-text-soft) !important; font-weight: 550; }
+.help-block, .text-muted { color: var(--ptd-muted) !important; }
+
+.select2-dropdown, .select2-container--default .select2-results__option {
+    background: var(--ptd-surface-2) !important;
+    color: var(--ptd-text) !important;
+    border-color: var(--ptd-line) !important;
+}
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background: var(--ptd-accent) !important;
+    color: var(--ptd-accent-ink) !important;
+}
+.select2-container--default .select2-selection--multiple .select2-selection__choice {
+    background: var(--ptd-accent-soft) !important;
+    border-color: var(--ptd-accent-line) !important;
+    color: var(--ptd-text) !important;
+    border-radius: var(--ptd-r-pill) !important;
+}
+
+/* =========================================================================
+   Buttons
+   ========================================================================= */
+
+.btn {
+    border-radius: var(--ptd-r-sm) !important;
+    font-weight: 600 !important;
+    border: 1px solid transparent !important;
+    box-shadow: none !important;
+    transition: filter .18s ease, background-color .18s ease, transform .14s ease;
+}
+.btn:active { transform: translateY(1px); }
+
+.btn-primary, .bg-primary {
+    background: linear-gradient(135deg, var(--ptd-accent), color-mix(in srgb, var(--ptd-accent-2) 55%, var(--ptd-accent))) !important;
+    color: var(--ptd-accent-ink) !important;
+    box-shadow: 0 6px 16px -8px var(--ptd-glow) !important;
+}
+.btn-primary:hover, .btn-primary:focus { filter: brightness(1.12); color: var(--ptd-accent-ink) !important; }
+
+.btn-default {
+    background: var(--ptd-surface-3) !important;
+    color: var(--ptd-text) !important;
+    border-color: var(--ptd-line) !important;
+}
+.btn-default:hover { background: color-mix(in srgb, var(--ptd-surface-3) 80%, var(--ptd-accent)) !important; color: var(--ptd-text) !important; }
+
+.btn-danger  { background: var(--ptd-danger) !important; color: #fff !important; }
+.btn-success { background: var(--ptd-ok) !important; color: #04231a !important; }
+.btn-warning { background: var(--ptd-warn) !important; color: #241a00 !important; }
+.btn-info    { background: var(--ptd-info) !important; color: #04202b !important; }
+.btn-danger:hover, .btn-success:hover, .btn-warning:hover, .btn-info:hover { filter: brightness(1.12); }
+
+/* =========================================================================
+   Hinweise, Labels, Paginierung, Modals
+   ========================================================================= */
+
+.alert, .callout {
+    background: var(--ptd-surface-2) !important;
+    border: 1px solid var(--ptd-line) !important;
+    border-left-width: 3px !important;
+    border-radius: var(--ptd-r-sm) !important;
+    color: var(--ptd-text-soft) !important;
+    box-shadow: none !important;
+}
+.alert-success, .callout-success { border-left-color: var(--ptd-ok) !important; }
+.alert-danger,  .callout-danger  { border-left-color: var(--ptd-danger) !important; }
+.alert-warning, .callout-warning { border-left-color: var(--ptd-warn) !important; }
+.alert-info,    .callout-info    { border-left-color: var(--ptd-info) !important; }
+
+.label, .badge {
+    border-radius: var(--ptd-r-pill) !important;
+    font-weight: 650 !important;
+    letter-spacing: .03em;
+    padding: .22em .6em !important;
+}
+.label-primary { background: var(--ptd-accent) !important; color: var(--ptd-accent-ink) !important; }
+.label-success { background: color-mix(in srgb, var(--ptd-ok) 22%, transparent) !important; color: var(--ptd-ok) !important; }
+.label-danger  { background: color-mix(in srgb, var(--ptd-danger) 22%, transparent) !important; color: var(--ptd-danger) !important; }
+.label-warning { background: color-mix(in srgb, var(--ptd-warn) 22%, transparent) !important; color: var(--ptd-warn) !important; }
+.label-info    { background: color-mix(in srgb, var(--ptd-info) 22%, transparent) !important; color: var(--ptd-info) !important; }
+.label-default { background: var(--ptd-surface-3) !important; color: var(--ptd-muted) !important; }
+
+.pagination > li > a, .pagination > li > span {
+    background: var(--ptd-surface-2) !important;
+    border-color: var(--ptd-line) !important;
+    color: var(--ptd-muted) !important;
+}
+.pagination > li > a:hover { background: var(--ptd-surface-3) !important; color: var(--ptd-text) !important; }
+.pagination > .active > a, .pagination > .active > span {
+    background: var(--ptd-accent) !important;
+    border-color: var(--ptd-accent) !important;
+    color: var(--ptd-accent-ink) !important;
+}
+
+.modal-content {
+    background: var(--ptd-surface) !important;
+    border: 1px solid var(--ptd-line-strong) !important;
+    border-radius: var(--ptd-r-lg) !important;
+    box-shadow: var(--ptd-shadow-lg) !important;
+}
+.modal-header, .modal-footer { border-color: var(--ptd-line) !important; }
+.modal-backdrop.in { opacity: .7; background: var(--ptd-bg); }
+
+.main-footer {
+    background: transparent !important;
+    border-top: 1px solid var(--ptd-line) !important;
+    color: var(--ptd-faint) !important;
+}
+.main-footer a { color: var(--ptd-muted) !important; }
+
+hr { border-color: var(--ptd-line) !important; }
+
+/* Konsolen-/Codeausgaben im Admin */
+pre, .well {
+    background: var(--ptd-bg-alt) !important;
+    border: 1px solid var(--ptd-line) !important;
+    border-radius: var(--ptd-r-sm) !important;
+    color: var(--ptd-text-soft) !important;
+    box-shadow: none !important;
+}
+
+/* CodeMirror (Egg-Editor) */
+.CodeMirror {
+    background: var(--ptd-bg-alt) !important;
+    color: var(--ptd-text) !important;
+    border: 1px solid var(--ptd-line) !important;
+    border-radius: var(--ptd-r-sm) !important;
+    font-family: var(--ptd-mono) !important;
+}
+.CodeMirror-gutters { background: var(--ptd-surface) !important; border-right: 1px solid var(--ptd-line) !important; }
+.CodeMirror-cursor { border-left-color: var(--ptd-accent) !important; }

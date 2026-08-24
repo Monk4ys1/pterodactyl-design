@@ -1,0 +1,13 @@
+{
+  "name": "nebula-theme-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Browsergestuetzte Pruefungen fuer das Nebula-Theme gegen einen Nachbau der Pterodactyl-Oberflaeche.",
+  "scripts": {
+    "test": "bash run.sh"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0",
+    "ws": "^8.18.0"
+  }
+}

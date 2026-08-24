@@ -1,0 +1,119 @@
+/* =========================================================================
+   Nebula · 50-auth.css
+   Login, Registrierung, Passwort-Reset und 2FA-Checkpoint.
+   ========================================================================= */
+
+html[data-ptd-page="auth"] body::before {
+    opacity: 1;
+    background:
+        radial-gradient(70% 60% at 18% -5%, color-mix(in srgb, var(--ptd-accent) 62%, transparent) 0%, transparent 62%),
+        radial-gradient(62% 58% at 86% 12%, color-mix(in srgb, var(--ptd-accent-2) 52%, transparent) 0%, transparent 60%),
+        radial-gradient(85% 62% at 50% 112%, color-mix(in srgb, var(--ptd-accent) 38%, transparent) 0%, transparent 64%);
+    animation: ptd-aurora 24s ease-in-out infinite alternate;
+}
+
+@keyframes ptd-aurora {
+    0%   { transform: scale(1) translate3d(0, 0, 0); }
+    50%  { transform: scale(1.12) translate3d(-2%, 1.5%, 0); }
+    100% { transform: scale(1.04) translate3d(2%, -1%, 0); }
+}
+
+html[data-ptd-page="auth"] #app {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+}
+
+/* Der Login-Container wird vom Tagger markiert */
+[data-ptd="auth-card"] {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    background: var(--ptd-surface-glass) !important;
+    -webkit-backdrop-filter: blur(calc(var(--ptd-blur) * 1.4)) saturate(180%);
+    backdrop-filter: blur(calc(var(--ptd-blur) * 1.4)) saturate(180%);
+    border: 1px solid var(--ptd-line-strong) !important;
+    border-radius: var(--ptd-r-lg) !important;
+    box-shadow: var(--ptd-shadow-lg), 0 0 60px -30px var(--ptd-glow) !important;
+    padding: 2rem 1.75rem 1.75rem !important;
+    animation: ptd-auth-in .5s cubic-bezier(.22,.68,.36,1) both;
+    overflow: hidden;
+}
+
+[data-ptd="auth-card"]::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 12%; right: 12%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--ptd-accent), var(--ptd-accent-2), transparent);
+}
+
+@keyframes ptd-auth-in {
+    from { opacity: 0; transform: translate3d(0, 18px, 0) scale(.98); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* Markenkopf über dem Formular */
+#ptd-auth-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .55rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+#ptd-auth-brand .ptd-mark {
+    width: 52px; height: 52px;
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--ptd-accent), var(--ptd-accent-2));
+    box-shadow: 0 12px 30px -12px var(--ptd-glow);
+    color: var(--ptd-accent-ink);
+}
+#ptd-auth-brand .ptd-mark svg { width: 28px; height: 28px; }
+#ptd-auth-brand h1 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: -.025em;
+    color: var(--ptd-text);
+    margin: 0;
+}
+#ptd-auth-brand p {
+    font-size: .8rem;
+    color: var(--ptd-muted);
+    margin: 0;
+}
+
+html[data-ptd-page="auth"] [data-ptd="auth-card"] input {
+    height: 44px;
+    font-size: .9rem;
+}
+
+html[data-ptd-page="auth"] [data-ptd-btn] { height: 44px; width: 100%; }
+
+/* Fußzeile der Login-Karte */
+#ptd-auth-foot {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--ptd-line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .75rem;
+    font-size: .72rem;
+    color: var(--ptd-faint);
+}
+#ptd-auth-foot button {
+    background: transparent;
+    border: 0;
+    color: var(--ptd-muted);
+    font-size: .72rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+}
+#ptd-auth-foot button:hover { color: var(--ptd-accent); }

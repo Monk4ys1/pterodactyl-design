@@ -1,0 +1,67 @@
+/* Ausschnitt der von Pterodactyl kompilierten Tailwind-Utilities inkl. der
+   Originalfarbwerte aus tailwind.config.js – dient als realistische Basis,
+   ueber die Nebula gelegt wird. */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+
+.bg-black { background-color: #131a20; }
+.bg-neutral-900 { background-color: #171923; }
+.bg-neutral-800 { background-color: #1a202c; }
+.bg-neutral-700 { background-color: #2d3748; }
+.bg-neutral-600 { background-color: #4a5568; }
+.bg-primary-500 { background-color: #0967d2; }
+.bg-red-600 { background-color: #e12d39; }
+
+.text-neutral-100 { color: #edf2f7; }
+.text-neutral-200 { color: #e2e8f0; }
+.text-neutral-300 { color: #cbd5e0; }
+.text-neutral-400 { color: #a0aec0; }
+.text-white { color: #fff; }
+
+.border-b { border-bottom: 1px solid #4a5568; }
+
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+.flex-1 { flex: 1 1 0%; }
+.flex { display: flex; }
+.grid { display: grid; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.overflow-x-auto { overflow-x: auto; }
+.no-underline { text-decoration: none; }
+.min-h-screen { min-height: 100vh; }
+
+.grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.col-span-5 { grid-column: span 5 / span 5; }
+.col-span-7 { grid-column: span 7 / span 7; }
+.col-span-3 { grid-column: span 3 / span 3; }
+.col-span-1 { grid-column: span 1 / span 1; }
+.gap-2 { gap: .5rem; }
+.gap-4 { gap: 1rem; }
+
+.p-2 { padding: .5rem; } .p-3 { padding: .75rem; } .p-4 { padding: 1rem; } .p-8 { padding: 2rem; }
+.px-4 { padding-left: 1rem; padding-right: 1rem; }
+.px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+.py-2 { padding-top: .5rem; padding-bottom: .5rem; }
+.py-3 { padding-top: .75rem; padding-bottom: .75rem; }
+.py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+.mb-2 { margin-bottom: .5rem; } .mb-3 { margin-bottom: .75rem; }
+.mb-4 { margin-bottom: 1rem; } .mt-4 { margin-top: 1rem; } .mt-6 { margin-top: 1.5rem; }
+
+.rounded { border-radius: .25rem; } .rounded-lg { border-radius: .5rem; }
+.shadow { box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.shadow-md { box-shadow: 0 4px 6px rgba(0,0,0,.35); }
+.shadow-lg { box-shadow: 0 10px 15px rgba(0,0,0,.4); }
+
+.text-sm { font-size: .875rem; } .text-lg { font-size: 1.125rem; } .text-2xl { font-size: 1.5rem; }
+p, h1 { margin: 0 0 .35rem; }
+label { display: block; margin-bottom: .35rem; font-size: .875rem; }
+input, button { font: inherit; }
+button { border: 0; cursor: pointer; }
+a { color: inherit; }
+
+.container { width: 100%; }
+.\[maxw\] { max-width: 1200px; }

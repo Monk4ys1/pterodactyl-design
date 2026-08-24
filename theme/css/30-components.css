@@ -1,0 +1,339 @@
+/* =========================================================================
+   Nebula · 30-components.css
+   Buttons, Formulare, Karten, Tabellen, Modals, Badges, Tooltips.
+   ========================================================================= */
+
+/* =========================================================================
+   Buttons
+   ========================================================================= */
+
+button, [role="button"], input[type="submit"], input[type="button"] {
+    border-radius: var(--ptd-r-sm);
+    transition: background-color .18s ease, color .18s ease, box-shadow .2s ease,
+                transform .14s cubic-bezier(.22,.68,.36,1), opacity .18s ease;
+}
+button:active:not(:disabled) { transform: translateY(1px) scale(.985); }
+button:disabled, [role="button"][aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+
+/* Varianten werden vom Tagger anhand der berechneten Farbe erkannt */
+[data-ptd-btn] {
+    position: relative;
+    font-weight: 600 !important;
+    letter-spacing: .01em;
+    text-transform: none !important;
+    border: 1px solid transparent !important;
+    overflow: hidden;
+}
+
+[data-ptd-btn]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,.16), transparent 62%);
+    opacity: .55;
+    pointer-events: none;
+}
+html[data-ptd-mode="light"] [data-ptd-btn]::after { opacity: .3; }
+
+[data-ptd-btn="primary"] {
+    background: linear-gradient(135deg, var(--ptd-accent), color-mix(in srgb, var(--ptd-accent-2) 55%, var(--ptd-accent))) !important;
+    color: var(--ptd-accent-ink) !important;
+    box-shadow: 0 6px 18px -8px var(--ptd-glow), inset 0 1px 0 rgba(255,255,255,.18) !important;
+}
+[data-ptd-btn="primary"]:hover:not(:disabled) {
+    filter: brightness(1.1);
+    box-shadow: 0 10px 26px -8px var(--ptd-glow), inset 0 1px 0 rgba(255,255,255,.22) !important;
+}
+
+[data-ptd-btn="danger"] {
+    background: linear-gradient(135deg, var(--ptd-danger), color-mix(in srgb, var(--ptd-danger) 70%, #7f1d1d)) !important;
+    color: #fff !important;
+    box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--ptd-danger) 55%, transparent) !important;
+}
+[data-ptd-btn="danger"]:hover:not(:disabled) { filter: brightness(1.1); }
+
+[data-ptd-btn="success"] {
+    background: linear-gradient(135deg, var(--ptd-ok), color-mix(in srgb, var(--ptd-ok) 70%, #065f46)) !important;
+    color: #04231a !important;
+}
+
+[data-ptd-btn="secondary"] {
+    background: var(--ptd-surface-3) !important;
+    color: var(--ptd-text) !important;
+    border-color: var(--ptd-line) !important;
+    box-shadow: var(--ptd-shadow-sm) !important;
+}
+[data-ptd-btn="secondary"]:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ptd-surface-3) 80%, var(--ptd-accent)) !important;
+    border-color: var(--ptd-accent-line) !important;
+}
+
+/* Power-Buttons der Serverkonsole */
+[data-ptd="power"] {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+[data-ptd="power"] button { min-width: 92px; }
+
+/* =========================================================================
+   Formulare
+   ========================================================================= */
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select, textarea {
+    background: var(--ptd-surface-3) !important;
+    color: var(--ptd-text) !important;
+    border: 1px solid var(--ptd-line) !important;
+    border-radius: var(--ptd-r-sm) !important;
+    box-shadow: none !important;
+    transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+}
+input::placeholder, textarea::placeholder { color: var(--ptd-faint) !important; }
+
+input:not([type="checkbox"]):not([type="radio"]):focus,
+select:focus, textarea:focus {
+    border-color: var(--ptd-accent) !important;
+    box-shadow: var(--ptd-ring) !important;
+    outline: none !important;
+    background: var(--ptd-surface-2) !important;
+}
+
+input[type="checkbox"], input[type="radio"] {
+    accent-color: var(--ptd-accent);
+    width: 1rem; height: 1rem;
+    cursor: pointer;
+}
+
+label { color: var(--ptd-text-soft); font-weight: 550; letter-spacing: .01em; }
+
+/* Autofill entfaerben */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--ptd-text);
+    -webkit-box-shadow: 0 0 0 1000px var(--ptd-surface-3) inset;
+    caret-color: var(--ptd-text);
+}
+
+/* =========================================================================
+   Karten / Boxen
+   ========================================================================= */
+
+[data-ptd="card"] {
+    background: var(--ptd-surface) !important;
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r) !important;
+    box-shadow: var(--ptd-shadow-sm) !important;
+    overflow: hidden;
+    transition: border-color .2s ease, box-shadow .2s ease;
+}
+[data-ptd="card"]:hover { border-color: var(--ptd-line-strong); }
+
+[data-ptd="card-header"] {
+    background: linear-gradient(180deg, var(--ptd-surface-2), var(--ptd-surface)) !important;
+    border-bottom: 1px solid var(--ptd-line) !important;
+    font-weight: 620;
+    letter-spacing: -0.01em;
+    color: var(--ptd-text) !important;
+}
+
+/* Statistik-Kacheln der Konsole */
+[data-ptd="stat"] {
+    position: relative;
+    background: var(--ptd-surface) !important;
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r) !important;
+    overflow: hidden;
+}
+[data-ptd="stat"]:hover { border-color: var(--ptd-accent-line); }
+
+/* =========================================================================
+   Tabellen
+   ========================================================================= */
+
+table { border-collapse: separate !important; border-spacing: 0; width: 100%; }
+
+thead th {
+    background: var(--ptd-surface-2) !important;
+    color: var(--ptd-muted) !important;
+    font-size: .7rem !important;
+    font-weight: 650 !important;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--ptd-line) !important;
+    padding: .7rem 1rem !important;
+}
+
+tbody tr { transition: background-color .16s ease; }
+tbody tr:hover { background: var(--ptd-surface-2) !important; }
+tbody td {
+    border-bottom: 1px solid var(--ptd-line) !important;
+    padding: .7rem 1rem !important;
+    color: var(--ptd-text-soft);
+}
+tbody tr:last-child td { border-bottom: 0 !important; }
+
+/* =========================================================================
+   Modals
+   ========================================================================= */
+
+#modal-portal > div,
+[data-ptd="modal-backdrop"] {
+    background: color-mix(in srgb, var(--ptd-bg) 72%, transparent) !important;
+    -webkit-backdrop-filter: blur(calc(var(--ptd-blur) * .5));
+    backdrop-filter: blur(calc(var(--ptd-blur) * .5));
+    animation: ptd-fade .2s ease both;
+}
+
+[data-ptd="modal"] {
+    background: var(--ptd-surface) !important;
+    border: 1px solid var(--ptd-line-strong);
+    border-radius: var(--ptd-r-lg) !important;
+    box-shadow: var(--ptd-shadow-lg) !important;
+    animation: ptd-modal-in .26s cubic-bezier(.22,.68,.36,1) both;
+}
+
+@keyframes ptd-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes ptd-modal-in {
+    from { opacity: 0; transform: translate3d(0, 16px, 0) scale(.97); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* =========================================================================
+   Badges / Pills
+   ========================================================================= */
+
+.ptd-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .18rem .6rem;
+    border-radius: var(--ptd-r-pill);
+    font-size: .7rem;
+    font-weight: 650;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    border: 1px solid var(--ptd-line);
+    background: var(--ptd-surface-2);
+    color: var(--ptd-muted);
+    white-space: nowrap;
+}
+.ptd-badge--ok      { color: var(--ptd-ok);     border-color: color-mix(in srgb, var(--ptd-ok) 40%, transparent);     background: color-mix(in srgb, var(--ptd-ok) 12%, transparent); }
+.ptd-badge--warn    { color: var(--ptd-warn);   border-color: color-mix(in srgb, var(--ptd-warn) 40%, transparent);   background: color-mix(in srgb, var(--ptd-warn) 12%, transparent); }
+.ptd-badge--danger  { color: var(--ptd-danger); border-color: color-mix(in srgb, var(--ptd-danger) 40%, transparent); background: color-mix(in srgb, var(--ptd-danger) 12%, transparent); }
+.ptd-badge--info    { color: var(--ptd-info);   border-color: color-mix(in srgb, var(--ptd-info) 40%, transparent);   background: color-mix(in srgb, var(--ptd-info) 12%, transparent); }
+
+.ptd-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 8px currentColor;
+    flex: none;
+}
+.ptd-dot--pulse { animation: ptd-pulse 1.6s ease-in-out infinite; }
+@keyframes ptd-pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+
+/* =========================================================================
+   Fortschrittsbalken
+   ========================================================================= */
+
+.ptd-meter {
+    position: relative;
+    height: 5px;
+    width: 100%;
+    border-radius: var(--ptd-r-pill);
+    background: var(--ptd-surface-3);
+    overflow: hidden;
+}
+.ptd-meter > i {
+    display: block;
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--ptd-accent), var(--ptd-accent-2));
+    transition: width .45s cubic-bezier(.22,.68,.36,1), background .3s ease;
+}
+.ptd-meter[data-level="warn"]   > i { background: linear-gradient(90deg, var(--ptd-warn), #f59e0b); }
+.ptd-meter[data-level="danger"] > i { background: linear-gradient(90deg, var(--ptd-danger), #dc2626); }
+
+/* =========================================================================
+   Tooltips
+   ========================================================================= */
+
+[data-ptd-tip] { position: relative; }
+[data-ptd-tip]::after {
+    content: attr(data-ptd-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    translate: -50% 0;
+    padding: .3rem .55rem;
+    font-size: .72rem;
+    font-weight: 550;
+    white-space: nowrap;
+    color: var(--ptd-text);
+    background: var(--ptd-surface-3);
+    border: 1px solid var(--ptd-line-strong);
+    border-radius: var(--ptd-r-sm);
+    box-shadow: var(--ptd-shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s ease, translate .15s ease;
+    z-index: 1000;
+}
+[data-ptd-tip]:hover::after { opacity: 1; translate: -50% -2px; }
+
+/* =========================================================================
+   Dateimanager
+   ========================================================================= */
+
+[data-ptd="file-row"] {
+    border-radius: var(--ptd-r-sm);
+    transition: background-color .15s ease, transform .15s ease;
+}
+[data-ptd="file-row"]:hover {
+    background: var(--ptd-surface-2) !important;
+    transform: translateX(2px);
+}
+
+/* =========================================================================
+   Spinner
+   ========================================================================= */
+
+.ptd-spin {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--ptd-line-strong);
+    border-top-color: var(--ptd-accent);
+    animation: ptd-rotate .7s linear infinite;
+    flex: none;
+}
+@keyframes ptd-rotate { to { transform: rotate(360deg) } }
+
+/* =========================================================================
+   Codeblöcke
+   ========================================================================= */
+
+pre, code:not(.ptd-kbd) {
+    background: var(--ptd-bg-alt) !important;
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r-sm);
+    color: var(--ptd-text-soft);
+}
+
+.ptd-kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    padding: .1rem .38rem;
+    font-family: var(--ptd-mono);
+    font-size: .68rem;
+    font-weight: 600;
+    color: var(--ptd-text-soft);
+    background: var(--ptd-surface-3);
+    border: 1px solid var(--ptd-line-strong);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+}

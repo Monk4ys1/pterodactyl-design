@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <title>MeinPanel - Admin</title>
+    <link rel="stylesheet" href="/adminlte.css">
+    <link rel="stylesheet" href="/assets/nebula-admin.css">
+    <script src="/assets/nebula-admin.js"></script>
+</head>
+<body class="hold-transition skin-blue fixed sidebar-mini">
+<div class="wrapper">
+    <header class="main-header">
+        <a href="/admin" class="logo"><span class="logo-lg">MeinPanel</span></a>
+        <nav class="navbar">
+            <a href="#" class="sidebar-toggle">&#9776;</a>
+            <div><ul class="nav"><li><a href="/">Zur Startseite</a></li><li><a href="#">Abmelden</a></li></ul></div>
+        </nav>
+    </header>
+    <aside class="main-sidebar">
+        <div class="user-panel"><div class="info"><p>monk4ys1</p></div></div>
+        <ul class="sidebar-menu">
+            <li class="header">VERWALTUNG</li>
+            <li class="active"><a href="#">Übersicht</a></li>
+            <li><a href="#">Einstellungen</a></li>
+            <li><a href="#">API</a></li>
+            <li class="header">SERVICE-VERWALTUNG</li>
+            <li><a href="#">Datenbanken</a></li>
+            <li><a href="#">Standorte</a></li>
+            <li><a href="#">Nodes</a></li>
+            <li><a href="#">Server</a></li>
+            <li><a href="#">Benutzer</a></li>
+            <li><a href="#">Eier</a></li>
+        </ul>
+    </aside>
+    <div class="content-wrapper">
+        <section class="content-header">
+            <h1>Übersicht<small>Ein kurzer Blick auf das System.</small></h1>
+            <ol class="breadcrumb"><li><a href="#">Admin</a></li><li class="active">Index</li></ol>
+        </section>
+        <section class="content">
+            <div class="row">
+                <div class="col-3"><div class="small-box"><div class="inner"><h3>12</h3><p>Server</p></div><a href="#" class="small-box-footer">Mehr &rarr;</a></div></div>
+                <div class="col-3"><div class="small-box"><div class="inner"><h3>4</h3><p>Nodes</p></div><a href="#" class="small-box-footer">Mehr &rarr;</a></div></div>
+                <div class="col-3"><div class="small-box"><div class="inner"><h3>37</h3><p>Benutzer</p></div><a href="#" class="small-box-footer">Mehr &rarr;</a></div></div>
+                <div class="col-3"><div class="small-box"><div class="inner"><h3>8</h3><p>Eier</p></div><a href="#" class="small-box-footer">Mehr &rarr;</a></div></div>
+            </div>
+            <div class="alert alert-info">Deine Installation ist auf dem neuesten Stand.</div>
+            <div class="row">
+                <div class="col-6">
+                    <div class="box box-primary">
+                        <div class="box-header"><h3 class="box-title">Server</h3></div>
+                        <div class="box-body">
+                            <table class="table table-hover">
+                                <thead><tr><th>Name</th><th>Node</th><th>Status</th></tr></thead>
+                                <tbody>
+                                    <tr><td><a href="#">Survival Welt</a></td><td>Node Alpha</td><td><span class="label label-success">Online</span></td></tr>
+                                    <tr><td><a href="#">Lobby Proxy</a></td><td>Node Beta</td><td><span class="label label-default">Offline</span></td></tr>
+                                    <tr><td><a href="#">Creative</a></td><td>Node Alpha</td><td><span class="label label-danger">Gesperrt</span></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="box-footer"><button class="btn btn-primary">Neuer Server</button> <button class="btn btn-default">Aktualisieren</button> <button class="btn btn-danger">Löschen</button></div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="nav-tabs-custom">
+                        <ul class="nav-tabs"><li class="active"><a href="#">Allgemein</a></li><li><a href="#">E-Mail</a></li><li><a href="#">Erweitert</a></li></ul>
+                        <div class="tab-content">
+                            <h4>Panel-Name</h4>
+                            <input type="text" class="form-control" value="MeinPanel">
+                            <p style="margin-top:10px">Dieser Name erscheint in der Kopfzeile und in E-Mails.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+</body>
+</html>

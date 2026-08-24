@@ -1,0 +1,223 @@
+/* =========================================================================
+   Nebula · 00-tokens.css
+   Design-Tokens, Farbpresets, Light-Mode, Dichte- und Radius-Steuerung.
+   Alle Werte sind zur Laufzeit ueber CSS-Custom-Properties ueberschreibbar
+   (siehe theme/js/30-settings.js).
+   ========================================================================= */
+
+:root {
+    /* --- Struktur ------------------------------------------------------- */
+    --ptd-r: 14px;                       /* Basis-Radius            */
+    --ptd-r-sm: calc(var(--ptd-r) * 0.55);
+    --ptd-r-lg: calc(var(--ptd-r) * 1.45);
+    --ptd-r-pill: 999px;
+    --ptd-blur: 18px;                    /* Glas-Unschaerfe         */
+    --ptd-density: 1;                    /* 0.8 = kompakt, 1.15 = luftig */
+    --ptd-gap: calc(1rem * var(--ptd-density));
+    --ptd-speed: 1;                      /* 0 = Animationen aus     */
+    --ptd-nav-h: 60px;
+    --ptd-max-w: 1240px;
+
+    /* --- Akzent (wird vom Preset gesetzt) -------------------------------- */
+    --ptd-accent: #7c6cff;
+    --ptd-accent-2: #22d3ee;
+    --ptd-accent-ink: #ffffff;
+    --ptd-accent-soft: color-mix(in srgb, var(--ptd-accent) 18%, transparent);
+    --ptd-accent-line: color-mix(in srgb, var(--ptd-accent) 42%, transparent);
+    --ptd-glow: color-mix(in srgb, var(--ptd-accent) 45%, transparent);
+
+    /* --- Flaechen -------------------------------------------------------- */
+    --ptd-bg: #080a11;                   /* Seite                    */
+    --ptd-bg-alt: #0c0f18;               /* Seite, zweite Ebene      */
+    --ptd-surface: #12151f;              /* Karte                    */
+    --ptd-surface-2: #171b28;            /* Karte, erhoeht           */
+    --ptd-surface-3: #1e2333;            /* Hover / Input            */
+    --ptd-surface-glass: rgba(20, 24, 36, 0.66);
+    --ptd-line: rgba(255, 255, 255, 0.075);
+    --ptd-line-strong: rgba(255, 255, 255, 0.14);
+
+    /* --- Text ------------------------------------------------------------ */
+    --ptd-text: #e8eaf2;
+    --ptd-text-soft: #b4bacb;
+    --ptd-muted: #8a93a9;
+    --ptd-faint: #5f677c;
+
+    /* --- Status ---------------------------------------------------------- */
+    --ptd-ok: #34d399;
+    --ptd-warn: #fbbf24;
+    --ptd-danger: #f87171;
+    --ptd-info: #38bdf8;
+    --ptd-offline: #6b7280;
+
+    /* --- Schatten -------------------------------------------------------- */
+    --ptd-shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
+    --ptd-shadow: 0 8px 24px -8px rgba(0, 0, 0, .65), 0 2px 6px rgba(0, 0, 0, .3);
+    --ptd-shadow-lg: 0 28px 70px -22px rgba(0, 0, 0, .8), 0 6px 18px rgba(0, 0, 0, .35);
+    --ptd-ring: 0 0 0 3px var(--ptd-accent-soft);
+
+    /* --- Typografie ------------------------------------------------------ */
+    --ptd-font: "Inter var", "Inter", ui-sans-serif, system-ui, -apple-system,
+                "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --ptd-mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular,
+                "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    /* --- Terminal ---------------------------------------------------------
+       Bewusst modusunabhaengig: xterm.js zeichnet seine Vordergrundfarben auf
+       ein Canvas und laesst sich per CSS nicht umfaerben. Ein helles Terminal
+       waere dadurch unlesbar. */
+    --ptd-term-bg: #0a0d15;
+    --ptd-term-bg-2: #0e121c;
+    --ptd-term-text: #cfd4e2;
+    --ptd-term-muted: #6b7488;
+    --ptd-term-line: rgba(255, 255, 255, 0.08);
+
+    /* --- Hintergrund-Ebene ----------------------------------------------- */
+    --ptd-canvas-1: color-mix(in srgb, var(--ptd-accent) 22%, transparent);
+    --ptd-canvas-2: color-mix(in srgb, var(--ptd-accent-2) 18%, transparent);
+    --ptd-canvas-opacity: 1;
+
+    color-scheme: dark;
+}
+
+/* =========================================================================
+   Farbpresets
+   ========================================================================= */
+
+html[data-ptd-preset="nebula"] {
+    --ptd-accent: #7c6cff;
+    --ptd-accent-2: #22d3ee;
+    --ptd-bg: #080a11;
+    --ptd-bg-alt: #0c0f18;
+    --ptd-surface: #12151f;
+    --ptd-surface-2: #171b28;
+    --ptd-surface-3: #1e2333;
+}
+
+html[data-ptd-preset="ocean"] {
+    --ptd-accent: #3b82f6;
+    --ptd-accent-2: #06b6d4;
+    --ptd-bg: #060b14;
+    --ptd-bg-alt: #08111d;
+    --ptd-surface: #0e1725;
+    --ptd-surface-2: #131e30;
+    --ptd-surface-3: #1a2839;
+}
+
+html[data-ptd-preset="forest"] {
+    --ptd-accent: #22c55e;
+    --ptd-accent-2: #a3e635;
+    --ptd-bg: #060d0a;
+    --ptd-bg-alt: #081411;
+    --ptd-surface: #0d1a15;
+    --ptd-surface-2: #11221b;
+    --ptd-surface-3: #172d24;
+}
+
+html[data-ptd-preset="ember"] {
+    --ptd-accent: #f97316;
+    --ptd-accent-2: #ef4444;
+    --ptd-bg: #0d0705;
+    --ptd-bg-alt: #140b07;
+    --ptd-surface: #1b100b;
+    --ptd-surface-2: #22150e;
+    --ptd-surface-3: #2c1c13;
+}
+
+html[data-ptd-preset="rose"] {
+    --ptd-accent: #ec4899;
+    --ptd-accent-2: #a855f7;
+    --ptd-bg: #0c0710;
+    --ptd-bg-alt: #120a17;
+    --ptd-surface: #19101f;
+    --ptd-surface-2: #201528;
+    --ptd-surface-3: #2b1d34;
+}
+
+html[data-ptd-preset="solar"] {
+    --ptd-accent: #eab308;
+    --ptd-accent-2: #f97316;
+    --ptd-accent-ink: #201700;
+    --ptd-bg: #0b0a05;
+    --ptd-bg-alt: #110f07;
+    --ptd-surface: #17150c;
+    --ptd-surface-2: #1e1b10;
+    --ptd-surface-3: #292416;
+}
+
+html[data-ptd-preset="midnight"] {
+    --ptd-accent: #6366f1;
+    --ptd-accent-2: #8b5cf6;
+    --ptd-bg: #05060d;
+    --ptd-bg-alt: #080a14;
+    --ptd-surface: #0d1020;
+    --ptd-surface-2: #111529;
+    --ptd-surface-3: #191e36;
+}
+
+html[data-ptd-preset="mono"] {
+    --ptd-accent: #e5e7eb;
+    --ptd-accent-2: #9ca3af;
+    --ptd-accent-ink: #0b0b0d;
+    --ptd-bg: #08090b;
+    --ptd-bg-alt: #0c0d10;
+    --ptd-surface: #121316;
+    --ptd-surface-2: #17191d;
+    --ptd-surface-3: #202329;
+    --ptd-canvas-opacity: .35;
+}
+
+/* =========================================================================
+   Light-Mode  ·  html[data-ptd-mode="light"]
+   ========================================================================= */
+
+html[data-ptd-mode="light"] {
+    --ptd-bg: #f4f5fa;
+    --ptd-bg-alt: #eceef6;
+    --ptd-surface: #ffffff;
+    --ptd-surface-2: #f8f9fd;
+    --ptd-surface-3: #eef0f7;
+    --ptd-surface-glass: rgba(255, 255, 255, 0.72);
+    --ptd-line: rgba(16, 20, 40, 0.09);
+    --ptd-line-strong: rgba(16, 20, 40, 0.16);
+    --ptd-text: #12151f;
+    --ptd-text-soft: #3d4457;
+    --ptd-muted: #626b80;
+    --ptd-faint: #949cae;
+    --ptd-ok: #059669;
+    --ptd-warn: #b45309;
+    --ptd-danger: #dc2626;
+    --ptd-info: #0284c7;
+    --ptd-offline: #94a3b8;
+    --ptd-shadow-sm: 0 1px 2px rgba(16, 20, 40, .07);
+    --ptd-shadow: 0 10px 26px -12px rgba(16, 20, 40, .28), 0 2px 6px rgba(16, 20, 40, .06);
+    --ptd-shadow-lg: 0 30px 70px -26px rgba(16, 20, 40, .32), 0 8px 20px rgba(16, 20, 40, .08);
+    --ptd-canvas-opacity: .55;
+    color-scheme: light;
+}
+
+/* =========================================================================
+   Dichte / Radius / Animation – Schalter
+   ========================================================================= */
+
+html[data-ptd-compact="1"] { --ptd-density: .78; --ptd-nav-h: 52px; }
+html[data-ptd-wide="1"]    { --ptd-max-w: 1600px; }
+html[data-ptd-glass="0"]   { --ptd-blur: 0px; --ptd-surface-glass: var(--ptd-surface); }
+
+html[data-ptd-motion="0"] *,
+html[data-ptd-motion="0"] *::before,
+html[data-ptd-motion="0"] *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html:not([data-ptd-motion="1"]) *,
+    html:not([data-ptd-motion="1"]) *::before,
+    html:not([data-ptd-motion="1"]) *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+    }
+}

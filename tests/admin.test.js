@@ -1,0 +1,22 @@
+const { chromium } = require('playwright');
+const path = require('path');
+(async () => {
+    const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
+    const p = await b.newPage({ viewport: { width: 1440, height: 950 } });
+    const errs = [];
+    p.on('pageerror', (e) => errs.push(e.message));
+    await p.goto('http://127.0.0.1:8899/admin');
+    await p.waitForTimeout(900);
+    console.log('PTD vorhanden:', await p.evaluate(() => !!window.PTD));
+    console.log('Seite erkannt :', await p.getAttribute('html', 'data-ptd-page'));
+    console.log('FAB sichtbar  :', await p.locator('#ptd-fab').isVisible());
+    await p.screenshot({ path: path.join(__dirname, 'shots', '10-admin.png'), fullPage: false });
+    await p.evaluate(() => { window.PTD.set('preset', 'forest'); });
+    await p.waitForTimeout(400);
+    await p.screenshot({ path: path.join(__dirname, 'shots', '11-admin-forest.png') });
+    await p.evaluate(() => { window.PTD.set('mode', 'light'); window.PTD.set('preset', 'ocean'); });
+    await p.waitForTimeout(400);
+    await p.screenshot({ path: path.join(__dirname, 'shots', '12-admin-light.png') });
+    console.log('Fehler        :', errs.length ? errs.join(' | ') : 'keine');
+    await b.close();
+})();

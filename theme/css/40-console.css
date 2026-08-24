@@ -1,0 +1,295 @@
+/* =========================================================================
+   Nebula · 40-console.css
+   Terminal (xterm.js), Konsolen-Toolbar, Live-Graphen, Serverkopfzeile.
+   ========================================================================= */
+
+/* =========================================================================
+   Terminal-Rahmen
+   ========================================================================= */
+
+[data-ptd="console"] {
+    position: relative;
+    background: linear-gradient(180deg, var(--ptd-term-bg-2), var(--ptd-term-bg)) !important;
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r) !important;
+    box-shadow: var(--ptd-shadow), inset 0 1px 0 rgba(255,255,255,.03) !important;
+    overflow: hidden;
+}
+
+[data-ptd="console"]::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--ptd-accent-line), transparent);
+    z-index: 3;
+}
+
+.xterm { padding: .5rem .25rem .5rem .75rem; }
+.xterm .xterm-viewport { background: transparent !important; }
+.xterm .xterm-screen   { background: transparent !important; }
+
+.xterm-viewport::-webkit-scrollbar { width: 8px; }
+.xterm-viewport::-webkit-scrollbar-thumb { background: var(--ptd-surface-3); border-radius: var(--ptd-r-pill); }
+
+.xterm .xterm-cursor.xterm-cursor-block,
+.xterm .xterm-cursor-block {
+    background: var(--ptd-accent) !important;
+    border-color: var(--ptd-accent) !important;
+}
+.xterm .xterm-selection div { background: color-mix(in srgb, var(--ptd-accent) 32%, transparent) !important; }
+
+/* Vollbildmodus der Konsole */
+html[data-ptd-console="full"] [data-ptd="console"] {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 4000;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+}
+html[data-ptd-console="full"] { overflow: hidden; }
+
+/* =========================================================================
+   Konsolen-Toolbar (von theme/js/50-console.js erzeugt)
+   ========================================================================= */
+
+#ptd-console-bar {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    flex-wrap: wrap;
+    padding: .5rem .6rem;
+    margin-bottom: -1px;
+    background: var(--ptd-surface-2);
+    border: 1px solid var(--ptd-line);
+    border-bottom: 0;
+    border-radius: var(--ptd-r) var(--ptd-r) 0 0;
+    position: relative;
+    z-index: 4;
+}
+html[data-ptd-console="full"] #ptd-console-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 4001;
+    border-radius: 0;
+    border-bottom: 1px solid var(--ptd-line);
+}
+html[data-ptd-console="full"] [data-ptd="console"] { padding-top: 46px; }
+
+#ptd-console-bar .ptd-cbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    height: 28px;
+    padding: 0 .6rem;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .01em;
+    color: var(--ptd-muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--ptd-r-sm);
+    cursor: pointer;
+    white-space: nowrap;
+}
+#ptd-console-bar .ptd-cbtn:hover { color: var(--ptd-text); background: var(--ptd-surface-3); }
+#ptd-console-bar .ptd-cbtn[aria-pressed="true"] {
+    color: var(--ptd-accent);
+    background: var(--ptd-accent-soft);
+    border-color: var(--ptd-accent-line);
+}
+#ptd-console-bar .ptd-cbtn svg { width: 13px; height: 13px; }
+
+#ptd-console-bar .ptd-csearch {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    height: 28px;
+    padding: 0 .5rem;
+    background: var(--ptd-surface-3);
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r-sm);
+    flex: 1 1 180px;
+    min-width: 140px;
+    max-width: 320px;
+}
+#ptd-console-bar .ptd-csearch input {
+    flex: 1;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    height: 100%;
+    font-size: .74rem;
+    font-family: var(--ptd-mono);
+    color: var(--ptd-text) !important;
+}
+#ptd-console-bar .ptd-csearch input:focus { box-shadow: none !important; }
+#ptd-console-bar .ptd-chits {
+    font-size: .68rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--ptd-faint);
+}
+
+#ptd-console-bar .ptd-cspacer { flex: 1 1 auto; }
+
+#ptd-console-bar .ptd-cstate {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--ptd-offline);
+    padding-right: .3rem;
+}
+#ptd-console-bar .ptd-cstate[data-state="running"]  { color: var(--ptd-ok); }
+#ptd-console-bar .ptd-cstate[data-state="starting"],
+#ptd-console-bar .ptd-cstate[data-state="stopping"] { color: var(--ptd-warn); }
+#ptd-console-bar .ptd-cstate[data-state="offline"]  { color: var(--ptd-offline); }
+
+/* =========================================================================
+   Konsolen-Overlay: Suchtreffer / gefilterte Ansicht
+   ========================================================================= */
+
+#ptd-log-view {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: none;
+    flex-direction: column;
+    background: var(--ptd-term-bg);
+    color: var(--ptd-term-text);
+    font-family: var(--ptd-mono);
+    font-size: .78rem;
+    line-height: 1.5;
+    overflow: auto;
+    padding: .6rem .8rem;
+}
+#ptd-log-view.is-open { display: flex; }
+#ptd-log-view .ptd-line {
+    white-space: pre-wrap;
+    word-break: break-word;
+    padding: 1px 0;
+    color: var(--ptd-term-text);
+    border-left: 2px solid transparent;
+    padding-left: .5rem;
+}
+#ptd-log-view .ptd-line:hover { background: rgba(255, 255, 255, .045); }
+#ptd-log-view .ptd-line mark {
+    background: color-mix(in srgb, #fbbf24 48%, transparent);
+    color: #fff;
+    border-radius: 3px;
+    padding: 0 2px;
+}
+#ptd-log-view .ptd-line[data-lvl="error"] { color: var(--ptd-danger); border-left-color: var(--ptd-danger); }
+#ptd-log-view .ptd-line[data-lvl="warn"]  { color: var(--ptd-warn);   border-left-color: var(--ptd-warn); }
+#ptd-log-view .ptd-line[data-lvl="info"]  { color: var(--ptd-info); }
+#ptd-log-view .ptd-line[data-lvl="debug"] { color: var(--ptd-term-muted); }
+#ptd-log-view .ptd-ts { color: var(--ptd-term-muted); margin-right: .55rem; user-select: none; }
+#ptd-log-view .ptd-empty { color: var(--ptd-term-muted); padding: 1rem; text-align: center; }
+
+/* =========================================================================
+   Live-Graphen
+   ========================================================================= */
+
+#ptd-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--ptd-gap);
+    margin-top: var(--ptd-gap);
+}
+
+.ptd-chart {
+    position: relative;
+    background: var(--ptd-surface);
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r);
+    padding: .85rem .95rem .5rem;
+    overflow: hidden;
+    transition: border-color .2s ease;
+}
+.ptd-chart:hover { border-color: var(--ptd-accent-line); }
+
+.ptd-chart-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-bottom: .35rem;
+}
+.ptd-chart-title {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ptd-muted);
+}
+.ptd-chart-value {
+    font-family: var(--ptd-mono);
+    font-size: 1.05rem;
+    font-weight: 650;
+    color: var(--ptd-text);
+    font-variant-numeric: tabular-nums;
+}
+.ptd-chart-sub {
+    font-size: .68rem;
+    color: var(--ptd-faint);
+    font-variant-numeric: tabular-nums;
+}
+.ptd-chart svg { display: block; width: 100%; height: 56px; overflow: visible; }
+.ptd-chart .ptd-area { fill: url(#ptd-grad); opacity: .28; }
+.ptd-chart .ptd-line-path {
+    fill: none;
+    stroke: var(--ptd-accent);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 5px var(--ptd-glow));
+}
+.ptd-chart[data-level="warn"]   .ptd-line-path { stroke: var(--ptd-warn); filter: none; }
+.ptd-chart[data-level="danger"] .ptd-line-path { stroke: var(--ptd-danger); filter: none; }
+
+/* =========================================================================
+   Serverkopfzeile mit Adresse / Kopierfunktion
+   ========================================================================= */
+
+#ptd-serverbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .6rem;
+    padding: .7rem .95rem;
+    margin: var(--ptd-gap) auto 0;
+    max-width: var(--ptd-max-w);
+    box-sizing: border-box;
+    background: var(--ptd-surface-glass);
+    -webkit-backdrop-filter: blur(var(--ptd-blur));
+    backdrop-filter: blur(var(--ptd-blur));
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r);
+}
+#ptd-serverbar .ptd-sb-name {
+    font-weight: 650;
+    letter-spacing: -.01em;
+    color: var(--ptd-text);
+    margin-right: .25rem;
+}
+#ptd-serverbar .ptd-sb-item {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .74rem;
+    font-family: var(--ptd-mono);
+    color: var(--ptd-muted);
+    background: var(--ptd-surface-2);
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r-sm);
+    padding: .22rem .5rem;
+    cursor: pointer;
+    transition: color .15s ease, border-color .15s ease;
+}
+#ptd-serverbar .ptd-sb-item:hover { color: var(--ptd-accent); border-color: var(--ptd-accent-line); }
+#ptd-serverbar .ptd-sb-spacer { flex: 1 1 auto; }
