@@ -1,8 +1,7 @@
 /* =========================================================================
    Nebula · 90-enhance.js
-   Zusaetzliche Oberflaechenelemente: Serverleiste mit Kopierfeldern,
-   Begruessung, Fusszeile, Nach-oben-Knopf, Schnellwechsler in der
-   Navigation und Statusfarben fuer die Serverkacheln.
+   Ergaenzungen am Rand: Serverangaben in der Kopfleiste, Fusszeile,
+   Nach-oben-Knopf und der Markenkopf auf der Anmeldeseite.
    ========================================================================= */
 
 (function () {
@@ -11,43 +10,57 @@
     if (!PTD) return;
 
     var el = PTD.el, qs = PTD.qs, icon = PTD.icon;
-    var serverInfo = null, infoFor = null;
-    var bar = null, uptimeEl = null, stateEl = null, switcher = null;
+
+    var chips = null, uptimeChip = null, stateChip = null, addrChip = null;
+    var info = null, infoFor = null;
 
     /* =====================================================================
-       Hilfen
+       Zwischenablage
        ===================================================================== */
 
     function copy(text, label) {
         if (!text) return;
         if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(function () {
-                PTD.toast({ type: 'ok', title: 'Kopiert', msg: label || text });
-            }, function () { window.prompt('Kopieren:', text); });
+            navigator.clipboard.writeText(text).then(
+                function () { PTD.toast({ type: 'ok', title: 'Kopiert', msg: label || text }); },
+                function () { window.prompt('Kopieren:', text); }
+            );
         } else {
             window.prompt('Kopieren:', text);
         }
     }
 
     function chip(ico, text, title, onClick) {
-        var node = el('span', { class: 'ptd-sb-item', title: title || text }, []);
-        node.insertAdjacentHTML('beforeend', icon(ico, 12));
+        var node = el('span', {
+            class: 'ptd-chip',
+            role: onClick ? 'button' : null,
+            tabindex: onClick ? '0' : null,
+            title: title || text
+        }, []);
+        if (ico) node.insertAdjacentHTML('beforeend', icon(ico, 12));
         node.appendChild(el('span', { text: text }));
-        if (onClick) node.addEventListener('click', onClick);
+        if (onClick) {
+            node.addEventListener('click', onClick);
+            node.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } });
+        }
         return node;
     }
 
     /* =====================================================================
-       Serverleiste
+       Serverangaben in der Kopfleiste
        ===================================================================== */
 
-    function loadServerInfo() {
+    var STATE_LABEL = { running: 'Online', starting: 'Startet', stopping: 'Stoppt', offline: 'Offline', missing: 'Fehlt' };
+    var STATE_CLASS = { running: 'ptd-badge--ok', starting: 'ptd-badge--warn', stopping: 'ptd-badge--warn', missing: 'ptd-badge--danger' };
+
+    function loadInfo() {
         var id = PTD.route.server;
         if (!id) return;
-        if (infoFor === id && serverInfo) { paintBar(); return; }
+        if (infoFor === id && info) { paintChips(); return; }
         infoFor = id;
-        serverInfo = PTD.cache.get('info:' + id, 300000);
-        if (serverInfo) paintBar();
+        info = PTD.cache.get('info:' + id, 300000);
+        if (info) paintChips();
+
         PTD.api('/api/client/servers/' + id).then(function (res) {
             var a = res && res.attributes;
             if (!a) return;
@@ -60,176 +73,78 @@
                 if (!alloc && list.length) alloc = list[0].attributes;
             } catch (e) { /* keine Allocation sichtbar */ }
 
-            serverInfo = {
-                name: a.name,
-                uuid: a.uuid,
-                identifier: a.identifier,
-                node: a.node,
-                description: a.description,
+            info = {
+                name: a.name, uuid: a.uuid, node: a.node,
                 address: alloc ? ((alloc.ip_alias || alloc.ip) + ':' + alloc.port) : '',
                 suspended: !!a.is_suspended
             };
-            PTD.cache.set('info:' + id, serverInfo);
-            paintBar();
-            paintSwitcher();
-        }).catch(function () { /* Leiste bleibt reduziert */ });
+            PTD.cache.set('info:' + id, info);
+            paintChips();
+        }).catch(function () { /* Angaben sind optional */ });
     }
 
-    function buildBar() {
-        uptimeEl = el('span', { class: 'ptd-sb-item', title: 'Laufzeit' }, []);
-        uptimeEl.insertAdjacentHTML('beforeend', icon('clock', 12));
-        uptimeEl.appendChild(el('span', { text: '–' }));
+    function mountChips() {
+        var bar = qs('#ptd-topbar');
+        if (!bar || !PTD.get('modules.enhance')) { removeChips(); return; }
+        if (PTD.route.page !== 'server') { removeChips(); return; }
 
-        stateEl = el('span', { class: 'ptd-badge', 'data-ptd-state': 'offline' }, [
-            el('i', { class: 'ptd-dot' }),
-            el('span', { text: 'Offline' })
-        ]);
-
-        bar = el('div', { id: 'ptd-serverbar' }, []);
-        return bar;
+        if (!chips) {
+            chips = el('div', { class: 'ptd-tb-chips' });
+        }
+        if (chips.parentNode !== bar) {
+            var spacer = bar.querySelector('.ptd-tb-spacer');
+            bar.insertBefore(chips, spacer);
+            loadInfo();
+        }
+        paintChips();
     }
 
-    var STATE_LABEL = { running: 'Online', starting: 'Startet', stopping: 'Stoppt', offline: 'Offline', missing: 'Fehlt' };
-    var STATE_CLASS = { running: 'ptd-badge--ok', starting: 'ptd-badge--warn', stopping: 'ptd-badge--warn', offline: '', missing: 'ptd-badge--danger' };
+    function removeChips() { if (chips && chips.parentNode) chips.parentNode.removeChild(chips); }
 
-    function paintBar() {
-        if (!bar) return;
-        bar.innerHTML = '';
-        var info = serverInfo || {};
+    function paintChips() {
+        if (!chips) return;
+        chips.innerHTML = '';
 
-        bar.appendChild(el('span', { class: 'ptd-sb-name', text: info.name || 'Server' }));
-        bar.appendChild(stateEl);
-
-        if (info.address) {
-            bar.appendChild(chip('globe', info.address, 'Adresse kopieren', function () { copy(info.address, 'Serveradresse'); }));
-        }
-        if (info.node) {
-            bar.appendChild(chip('server', info.node, 'Node'));
-        }
-        bar.appendChild(uptimeEl);
-        bar.appendChild(el('span', { class: 'ptd-sb-spacer' }));
-        if (info.uuid) {
-            bar.appendChild(chip('copy', info.uuid.split('-')[0], 'Vollstaendige UUID kopieren', function () { copy(info.uuid, 'UUID'); }));
-        }
-        if (info.suspended) {
-            bar.appendChild(el('span', { class: 'ptd-badge ptd-badge--danger', text: 'Gesperrt' }));
-        }
+        stateChip = el('span', { class: 'ptd-badge' }, [el('i', { class: 'ptd-dot' }), el('span', { text: 'Offline' })]);
+        chips.appendChild(stateChip);
         paintState(PTD.store.state);
+
+        if (info && info.address) {
+            addrChip = chip('globe', info.address, 'Adresse kopieren', function () { copy(info.address, 'Serveradresse'); });
+            chips.appendChild(addrChip);
+        }
+
+        uptimeChip = chip('clock', '–', 'Laufzeit');
+        chips.appendChild(uptimeChip);
+
+        if (info && info.uuid) {
+            chips.appendChild(chip('copy', info.uuid.split('-')[0], 'Vollstaendige UUID kopieren', function () { copy(info.uuid, 'UUID'); }));
+        }
+        if (info && info.suspended) {
+            chips.appendChild(el('span', { class: 'ptd-badge ptd-badge--danger', text: 'Gesperrt' }));
+        }
         paintUptime();
     }
 
     function paintState(state) {
-        if (!stateEl) return;
-        stateEl.className = 'ptd-badge ' + (STATE_CLASS[state] || '');
-        stateEl.setAttribute('data-ptd-state', state);
-        stateEl.lastChild.textContent = STATE_LABEL[state] || state;
-        var dot = stateEl.querySelector('.ptd-dot');
+        if (!stateChip) return;
+        stateChip.className = 'ptd-badge ' + (STATE_CLASS[state] || '');
+        stateChip.lastChild.textContent = STATE_LABEL[state] || state;
+        var dot = stateChip.querySelector('.ptd-dot');
         if (dot) dot.classList.toggle('ptd-dot--pulse', state === 'starting' || state === 'stopping');
     }
 
     function paintUptime() {
-        if (!uptimeEl) return;
+        if (!uptimeChip) return;
         var s = PTD.store.lastStats;
-        uptimeEl.lastChild.textContent = (s && s.uptime) ? PTD.fmt.duration(s.uptime) : '–';
+        uptimeChip.lastChild.textContent = (s && s.uptime) ? PTD.fmt.duration(s.uptime) : '–';
     }
 
-    function mountBar() {
-        if (!PTD.get('modules.enhance') || PTD.route.page !== 'server') { unmountBar(); return; }
-        var sub = qs('[data-ptd="subnav"]');
-        if (!sub) return;
-        if (!bar) buildBar();
-        if (bar.parentNode !== sub.parentNode || bar.previousElementSibling !== sub) {
-            sub.parentNode.insertBefore(bar, sub.nextSibling);
-            loadServerInfo();
-            paintBar();
-        }
-    }
-
-    function unmountBar() {
-        if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
-    }
-
-    /* =====================================================================
-       Schnellwechsler in der Navigation
-       ===================================================================== */
-
-    function mountSwitcher() {
-        if (!PTD.get('modules.enhance') || !PTD.get('modules.palette')) { unmountSwitcher(); return; }
-        var actions = qs('[data-ptd="nav-actions"]');
-        if (!actions) return;
-        if (!switcher) {
-            switcher = el('button', { id: 'ptd-switcher', type: 'button', title: 'Server wechseln (Strg + K)' }, []);
-            switcher.insertAdjacentHTML('beforeend', icon('server', 13));
-            switcher.appendChild(el('span', { class: 'ptd-sw-name', text: 'Server' }));
-            switcher.insertAdjacentHTML('beforeend', icon('chevron', 12));
-            switcher.addEventListener('click', function () { if (PTD.palette) PTD.palette.open(); });
-        }
-        if (switcher.parentNode !== actions.parentNode) {
-            actions.parentNode.insertBefore(switcher, actions);
-        }
-        paintSwitcher();
-    }
-
-    function unmountSwitcher() {
-        if (switcher && switcher.parentNode) switcher.parentNode.removeChild(switcher);
-    }
-
-    function paintSwitcher() {
-        if (!switcher) return;
-        var label = (PTD.route.page === 'server' && serverInfo && serverInfo.name) ? serverInfo.name : 'Server wechseln';
-        var span = switcher.querySelector('.ptd-sw-name');
-        if (span) span.textContent = label;
-    }
-
-    /* =====================================================================
-       Begruessung auf dem Dashboard
-       ===================================================================== */
-
-    function greetingText() {
-        var h = new Date().getHours();
-        if (h < 5) return 'Gute Nacht';
-        if (h < 11) return 'Guten Morgen';
-        if (h < 18) return 'Guten Tag';
-        return 'Guten Abend';
-    }
-
-    function userName() {
-        try {
-            var u = window.PterodactylUser;
-            if (u && u.username) return u.username;
-        } catch (e) { /* nicht vorhanden */ }
-        return null;
-    }
-
-    function mountGreeting() {
-        var existing = qs('#ptd-greeting');
-        if (!PTD.get('modules.enhance') || !PTD.get('greeting') || PTD.route.page !== 'dashboard') {
-            if (existing) existing.remove();
-            return;
-        }
-        if (existing) return;
-        var root = PTD.contentRoot();
-        if (!root) return;
-        var name = userName();
-        var node = el('div', {
-            id: 'ptd-greeting',
-            style: {
-                maxWidth: 'var(--ptd-max-w)', margin: '1.4rem auto .2rem',
-                padding: '0 1.25rem', display: 'flex', alignItems: 'baseline',
-                gap: '.6rem', flexWrap: 'wrap'
-            }
-        }, [
-            el('span', {
-                text: greetingText() + (name ? ', ' + name : '') + '.',
-                style: { fontSize: '1.4rem', fontWeight: '700', letterSpacing: '-.025em', color: 'var(--ptd-text)' }
-            }),
-            el('span', {
-                text: 'Deine Server im Ueberblick.',
-                style: { fontSize: '.85rem', color: 'var(--ptd-muted)' }
-            })
-        ]);
-        root.insertBefore(node, root.firstChild);
-    }
+    setInterval(function () {
+        if (!uptimeChip || !uptimeChip.parentNode) return;
+        var s = PTD.store.lastStats;
+        if (s && s.uptime && PTD.store.state === 'running') { s.uptime += 1000; paintUptime(); }
+    }, 1000);
 
     /* =====================================================================
        Fusszeile
@@ -244,7 +159,8 @@
         if (existing) return;
         var app = qs('#app');
         if (!app) return;
-        var node = el('div', { 'data-ptd': 'footer' }, [
+
+        app.appendChild(el('div', { 'data-ptd': 'footer', 'data-ptd-own': '' }, [
             el('span', {}, [
                 el('span', { text: 'Nebula ' }),
                 el('b', { text: 'v' + PTD.version, style: { color: 'var(--ptd-muted)' } }),
@@ -252,34 +168,38 @@
                 el('span', { text: 'Design fuer Pterodactyl' })
             ]),
             el('span', {}, [
-                el('a', { href: '#', text: 'Einstellungen', onclick: function (e) { e.preventDefault(); if (PTD.settingsPanel) PTD.settingsPanel.open(); } }),
+                el('a', {
+                    href: '#', text: 'Einstellungen',
+                    onclick: function (e) { e.preventDefault(); PTD.settingsPanel.open(); }
+                }),
                 el('span', { class: 'ptd-foot-dot', text: '·' }),
-                el('a', { href: '#', text: 'Tastenkuerzel', onclick: function (e) { e.preventDefault(); if (PTD.shortcuts) PTD.shortcuts.show(); } })
+                el('a', {
+                    href: '#', text: 'Tastenkuerzel',
+                    onclick: function (e) { e.preventDefault(); if (PTD.shortcuts) PTD.shortcuts.show(); }
+                })
             ])
-        ]);
-        app.appendChild(node);
+        ]));
     }
 
     /* =====================================================================
-       Markenkopf und Fusszeile der Login-Karte
+       Anmeldeseite
        ===================================================================== */
 
     var MARK = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-        'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M3 7.5 12 2l9 5.5v9L12 22l-9-5.5Z"/><path d="M12 22V12"/><path d="m3 7.5 9 4.5 9-4.5"/></svg>';
 
     function panelName() {
-        var t = (document.title || '').split(/[|\-–]/)[0].trim();
-        return t || 'Pterodactyl';
+        return (document.title || '').split(/[|\-–]/)[0].trim() || 'Pterodactyl';
     }
 
-    function mountAuthBrand() {
+    function mountAuth() {
         if (PTD.route.page !== 'auth') return;
         var card = qs('[data-ptd="auth-card"]');
         if (!card) return;
 
         if (!qs('#ptd-auth-brand')) {
-            var brand = el('div', { id: 'ptd-auth-brand' }, []);
+            var brand = el('div', { id: 'ptd-auth-brand', 'data-ptd-own': '' }, []);
             brand.appendChild(el('span', { class: 'ptd-mark', html: MARK }));
             brand.appendChild(el('h1', { text: panelName() }));
             brand.appendChild(el('p', { text: 'Melde dich an, um deine Server zu verwalten.' }));
@@ -301,66 +221,38 @@
             paintMode();
 
             var themeBtn = el('button', { type: 'button' }, []);
-            themeBtn.insertAdjacentHTML('beforeend', icon('wand', 13));
+            themeBtn.insertAdjacentHTML('beforeend', icon('sparkles', 13));
             themeBtn.appendChild(el('span', { text: 'Design' }));
-            themeBtn.addEventListener('click', function () { if (PTD.settingsPanel) PTD.settingsPanel.open(); });
+            themeBtn.addEventListener('click', function () { PTD.settingsPanel.open('design'); });
 
-            card.appendChild(el('div', { id: 'ptd-auth-foot' }, [modeBtn, themeBtn]));
+            card.appendChild(el('div', { id: 'ptd-auth-foot', 'data-ptd-own': '' }, [modeBtn, themeBtn]));
         }
     }
 
     /* =====================================================================
-       Nach-oben-Knopf
+       Nach oben
        ===================================================================== */
 
     function mountTop() {
         if (qs('#ptd-totop')) return;
         var btn = el('button', {
             id: 'ptd-totop', type: 'button', 'aria-label': 'Nach oben',
-            html: icon('arrowUp', 17),
+            html: icon('arrowUp', 16),
             onclick: function () { window.scrollTo({ top: 0, behavior: PTD.get('motion') ? 'smooth' : 'auto' }); }
         });
         document.body.appendChild(btn);
-        var update = PTD.debounce(function () {
-            btn.classList.toggle('is-visible', window.scrollY > 420);
-        }, 80);
+        var update = PTD.debounce(function () { btn.classList.toggle('is-visible', window.scrollY > 380); }, 80);
         window.addEventListener('scroll', update, { passive: true });
     }
-
-    /* =====================================================================
-       Statusfarben der Serverkacheln
-       ===================================================================== */
-
-    PTD.bus.on('resources', function (r) {
-        if (!r || !r.id) return;
-        var card = qs('[data-ptd="server-card"][data-ptd-sid="' + r.id + '"]');
-        if (!card) return;
-        card.setAttribute('data-ptd-state', r.suspended ? 'suspended' : (r.state || 'offline'));
-    });
-
-    /* =====================================================================
-       Laufzeit-Ticker
-       ===================================================================== */
-
-    setInterval(function () {
-        if (!bar || !bar.parentNode) return;
-        var s = PTD.store.lastStats;
-        if (s && s.uptime && PTD.store.state === 'running') {
-            s.uptime += 1000;
-            paintUptime();
-        }
-    }, 1000);
 
     /* =====================================================================
        Ereignisse
        ===================================================================== */
 
     function refresh() {
-        mountBar();
-        mountSwitcher();
-        mountGreeting();
+        mountChips();
         mountFooter();
-        mountAuthBrand();
+        mountAuth();
     }
 
     PTD.bus.on('scan', refresh);
@@ -368,14 +260,11 @@
     PTD.bus.on('stats', paintUptime);
     PTD.bus.on('settings', refresh);
     PTD.bus.on('route', function () {
-        if (PTD.route.page !== 'server') { unmountBar(); serverInfo = null; infoFor = null; }
+        if (PTD.route.page !== 'server') { removeChips(); info = null; infoFor = null; }
         setTimeout(refresh, 120);
     });
 
-    PTD.ready(function () {
-        mountTop();
-        setTimeout(refresh, 200);
-    });
+    PTD.ready(function () { mountTop(); setTimeout(refresh, 200); });
 
     PTD.enhance = { refresh: refresh, copy: copy };
 })();

@@ -21,12 +21,26 @@ if [ ! -d node_modules ]; then
 fi
 
 echo "› Testserver starten"
+rm -f .port
 node server.js > server.log 2>&1 &
 SERVER_PID=$!
-trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+trap 'kill "$SERVER_PID" 2>/dev/null || true; rm -f "$HERE/.port"' EXIT
+
+# Der Server sucht sich einen freien Port und legt ihn in .port ab.
+for _ in $(seq 1 40); do
+    [ -s .port ] && break
+    sleep 0.25
+done
+if [ ! -s .port ]; then
+    echo "Testserver konnte nicht starten:"
+    cat server.log
+    exit 1
+fi
+PORT="$(cat .port)"
+echo "  Port $PORT"
 
 for _ in $(seq 1 30); do
-    if curl -fsS -o /dev/null http://127.0.0.1:8899/ 2>/dev/null; then break; fi
+    if curl -fsS -o /dev/null "http://127.0.0.1:$PORT/" 2>/dev/null; then break; fi
     sleep 0.3
 done
 

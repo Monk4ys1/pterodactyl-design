@@ -29,7 +29,7 @@ body.hold-transition {
 
 .main-header .navbar,
 .main-header .logo {
-    background: var(--ptd-surface-glass) !important;
+    background: var(--ptd-glass) !important;
     -webkit-backdrop-filter: blur(var(--ptd-blur)) saturate(160%);
     backdrop-filter: blur(var(--ptd-blur)) saturate(160%);
     border-bottom: 1px solid var(--ptd-line) !important;
@@ -101,7 +101,7 @@ body.hold-transition {
     padding: 1.1rem 1rem .4rem !important;
 }
 
-.sidebar-menu .treeview-menu { background: var(--ptd-bg-alt) !important; }
+.sidebar-menu .treeview-menu { background: var(--ptd-bg-2) !important; }
 .sidebar-menu .treeview-menu > li > a { color: var(--ptd-muted) !important; }
 .sidebar-menu .treeview-menu > li.active > a,
 .sidebar-menu .treeview-menu > li > a:hover { color: var(--ptd-accent) !important; }
@@ -144,11 +144,11 @@ body.hold-transition {
    ========================================================================= */
 
 .box {
-    background: var(--ptd-surface) !important;
+    background: var(--ptd-card) !important;
     border: 1px solid var(--ptd-line) !important;
     border-top: 1px solid var(--ptd-line) !important;
     border-radius: var(--ptd-r) !important;
-    box-shadow: var(--ptd-shadow-sm) !important;
+    box-shadow: var(--ptd-e1), var(--ptd-rim) !important;
     overflow: hidden;
 }
 .box.box-primary { border-top: 2px solid var(--ptd-accent) !important; }
@@ -158,22 +158,22 @@ body.hold-transition {
 .box.box-info    { border-top: 2px solid var(--ptd-info) !important; }
 
 .box-header {
-    background: linear-gradient(180deg, var(--ptd-surface-2), var(--ptd-surface)) !important;
+    background: transparent !important;
     border-bottom: 1px solid var(--ptd-line) !important;
     color: var(--ptd-text) !important;
     padding: .9rem 1.1rem !important;
 }
 .box-header .box-title { font-weight: 650 !important; font-size: .95rem !important; letter-spacing: -.01em; }
 .box-header .description, .box-header small { color: var(--ptd-muted) !important; }
-.box-body, .box-footer { background: transparent !important; color: var(--ptd-text-soft) !important; }
+.box-body, .box-footer { background: transparent !important; color: var(--ptd-text-2) !important; }
 .box-footer { border-top: 1px solid var(--ptd-line) !important; }
 
 /* Kennzahlen-Kacheln */
 .small-box, .info-box {
-    background: var(--ptd-surface) !important;
+    background: var(--ptd-card) !important;
     border: 1px solid var(--ptd-line);
     border-radius: var(--ptd-r) !important;
-    box-shadow: var(--ptd-shadow-sm) !important;
+    box-shadow: var(--ptd-e1), var(--ptd-rim) !important;
     color: var(--ptd-text) !important;
     overflow: hidden;
     transition: transform .2s ease, border-color .2s ease;
@@ -195,10 +195,10 @@ body.hold-transition {
    ========================================================================= */
 
 .nav-tabs-custom {
-    background: var(--ptd-surface) !important;
+    background: var(--ptd-card) !important;
     border: 1px solid var(--ptd-line);
     border-radius: var(--ptd-r) !important;
-    box-shadow: var(--ptd-shadow-sm) !important;
+    box-shadow: var(--ptd-e1), var(--ptd-rim) !important;
     overflow: hidden;
 }
 .nav-tabs-custom > .nav-tabs {
@@ -212,13 +212,13 @@ body.hold-transition {
     background: var(--ptd-surface) !important;
     color: var(--ptd-accent) !important;
 }
-.tab-content { background: transparent !important; color: var(--ptd-text-soft); }
+.tab-content { background: transparent !important; color: var(--ptd-text-2); }
 
 /* =========================================================================
    Tabellen
    ========================================================================= */
 
-.table { color: var(--ptd-text-soft) !important; margin-bottom: 0; }
+.table { color: var(--ptd-text-2) !important; margin-bottom: 0; }
 .table > thead > tr > th {
     background: var(--ptd-surface-2) !important;
     color: var(--ptd-muted) !important;
@@ -240,7 +240,7 @@ body.hold-transition {
 
 .form-control, .input-group-addon, .select2-container--default .select2-selection--single,
 .select2-container--default .select2-selection--multiple {
-    background: var(--ptd-surface-3) !important;
+    background: var(--ptd-veil-2) !important;
     border: 1px solid var(--ptd-line) !important;
     border-radius: var(--ptd-r-sm) !important;
     color: var(--ptd-text) !important;
@@ -252,7 +252,7 @@ body.hold-transition {
     box-shadow: var(--ptd-ring) !important;
 }
 .form-control::placeholder { color: var(--ptd-faint) !important; }
-.control-label, label { color: var(--ptd-text-soft) !important; font-weight: 550; }
+.control-label, label { color: var(--ptd-text-2) !important; font-weight: 550; }
 .help-block, .text-muted { color: var(--ptd-muted) !important; }
 
 .select2-dropdown, .select2-container--default .select2-results__option {
@@ -292,7 +292,7 @@ body.hold-transition {
 .btn-primary:hover, .btn-primary:focus { filter: brightness(1.12); color: var(--ptd-accent-ink) !important; }
 
 .btn-default {
-    background: var(--ptd-surface-3) !important;
+    background: var(--ptd-veil-2) !important;
     color: var(--ptd-text) !important;
     border-color: var(--ptd-line) !important;
 }
@@ -313,7 +313,7 @@ body.hold-transition {
     border: 1px solid var(--ptd-line) !important;
     border-left-width: 3px !important;
     border-radius: var(--ptd-r-sm) !important;
-    color: var(--ptd-text-soft) !important;
+    color: var(--ptd-text-2) !important;
     box-shadow: none !important;
 }
 .alert-success, .callout-success { border-left-color: var(--ptd-ok) !important; }
@@ -348,9 +348,9 @@ body.hold-transition {
 
 .modal-content {
     background: var(--ptd-surface) !important;
-    border: 1px solid var(--ptd-line-strong) !important;
+    border: 1px solid var(--ptd-line-2) !important;
     border-radius: var(--ptd-r-lg) !important;
-    box-shadow: var(--ptd-shadow-lg) !important;
+    box-shadow: var(--ptd-e4) !important;
 }
 .modal-header, .modal-footer { border-color: var(--ptd-line) !important; }
 .modal-backdrop.in { opacity: .7; background: var(--ptd-bg); }
@@ -366,16 +366,16 @@ hr { border-color: var(--ptd-line) !important; }
 
 /* Konsolen-/Codeausgaben im Admin */
 pre, .well {
-    background: var(--ptd-bg-alt) !important;
+    background: var(--ptd-bg-2) !important;
     border: 1px solid var(--ptd-line) !important;
     border-radius: var(--ptd-r-sm) !important;
-    color: var(--ptd-text-soft) !important;
+    color: var(--ptd-text-2) !important;
     box-shadow: none !important;
 }
 
 /* CodeMirror (Egg-Editor) */
 .CodeMirror {
-    background: var(--ptd-bg-alt) !important;
+    background: var(--ptd-bg-2) !important;
     color: var(--ptd-text) !important;
     border: 1px solid var(--ptd-line) !important;
     border-radius: var(--ptd-r-sm) !important;

@@ -51,9 +51,9 @@
        sonst ueber den Farbton der berechneten Hintergrundfarbe.
        ===================================================================== */
 
-    var SKIP_IN = '#ptd-drawer,#ptd-palette,#ptd-console-bar,#ptd-keys,#ptd-toasts,#ptd-fab,'
-    + '#ptd-serverbar,#ptd-totop,#ptd-switcher,#ptd-greeting,#ptd-charts,#ptd-log-view,'
-    + '#ptd-auth-brand,#ptd-auth-foot,[data-ptd="footer"]';
+    var SKIP_IN = '[data-ptd-own],#ptd-rail,#ptd-topbar,#ptd-drawer,#ptd-palette,#ptd-console-bar,'
+    + '#ptd-snippets,#ptd-keys,#ptd-toasts,#ptd-fab,#ptd-dock,#ptd-overview,#ptd-hero,'
+    + '#ptd-totop,#ptd-charts,#ptd-log-view,#ptd-auth-brand,#ptd-auth-foot,[data-ptd="footer"]';
 
     function classifyButton(btn) {
         var cls = typeof btn.className === 'string' ? btn.className : '';
@@ -168,6 +168,7 @@
         qsa('#app a[href^="/server/"]').forEach(function (a) {
             var h = a.getAttribute('href') || '';
             if (!/^\/server\/[^/]+\/?$/.test(h)) return;
+            if (a.closest(SKIP_IN)) return;          /* eigene Kacheln nicht anfassen */
             if (a.getAttribute('data-ptd') === 'server-card') return;
             mark(a, 'server-card');
             a.setAttribute('data-ptd-sid', h.split('/')[2]);

@@ -1,0 +1,224 @@
+/* =========================================================================
+   Nebula · 70-charts.css
+   Verlaufsdiagramme und Kennzahlkacheln.
+   Regeln: duenne Marken, zuruecktretendes Raster, eine Achse je Diagramm,
+   Fadenkreuz mit Sprechblase beim Ueberfahren, Farbe folgt der Groesse
+   (nicht dem Rang), Text traegt Textfarben statt Serienfarben.
+   ========================================================================= */
+
+#ptd-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: var(--ptd-gap);
+    margin-top: var(--ptd-gap);
+}
+
+.ptd-chart {
+    position: relative;
+    background: var(--ptd-card);
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r);
+    box-shadow: var(--ptd-e1), var(--ptd-rim);
+    padding: .9rem 1rem .6rem;
+    overflow: hidden;
+    transition: border-color var(--ptd-t-base) var(--ptd-ease);
+}
+.ptd-chart:hover { border-color: var(--ptd-line-2); }
+
+/* --- Kopf ---------------------------------------------------------------- */
+
+.ptd-chart-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .6rem;
+    margin-bottom: .1rem;
+}
+
+.ptd-chart-title {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    font-size: var(--ptd-fs-label);
+    font-weight: 680;
+    letter-spacing: var(--ptd-tr-label);
+    text-transform: uppercase;
+    color: var(--ptd-faint);
+}
+/* Farbmarke neben dem Titel – die Identitaet haengt nie an der Textfarbe */
+.ptd-chart-title i {
+    width: 8px; height: 8px;
+    border-radius: 2px;
+    background: var(--series);
+    flex: none;
+}
+
+.ptd-chart-actions { display: flex; gap: .15rem; opacity: 0; transition: opacity var(--ptd-t-fast) var(--ptd-ease); }
+.ptd-chart:hover .ptd-chart-actions,
+.ptd-chart:focus-within .ptd-chart-actions { opacity: 1; }
+.ptd-chart-actions button {
+    width: 22px; height: 22px;
+    display: grid; place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--ptd-faint);
+    border-radius: 5px;
+    cursor: pointer;
+}
+.ptd-chart-actions button:hover { color: var(--ptd-text); background: var(--ptd-veil-2); }
+.ptd-chart-actions svg { width: 12px; height: 12px; }
+
+/* --- Kennzahl ------------------------------------------------------------ */
+
+.ptd-chart-value {
+    display: block;
+    font-size: 1.5rem;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    font-weight: 660;
+    color: var(--ptd-text);
+    font-variant-numeric: tabular-nums;
+    margin-top: .15rem;
+}
+.ptd-chart-value small {
+    font-size: .55em;
+    font-weight: 560;
+    color: var(--ptd-muted);
+    letter-spacing: 0;
+    margin-left: .18em;
+}
+
+.ptd-chart-sub {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: var(--ptd-fs-xs);
+    color: var(--ptd-faint);
+    font-variant-numeric: tabular-nums;
+    min-height: 1.1rem;
+}
+.ptd-chart-sub .ptd-delta { display: inline-flex; align-items: center; gap: .15rem; font-weight: 600; }
+.ptd-chart-sub .ptd-delta[data-dir="up"]   { color: var(--ptd-text-2); }
+.ptd-chart-sub .ptd-delta[data-dir="down"] { color: var(--ptd-text-2); }
+
+/* --- Zeichenflaeche ------------------------------------------------------ */
+
+.ptd-chart-plot {
+    position: relative;
+    margin: .5rem -.25rem 0;
+    height: 78px;
+    cursor: crosshair;
+}
+.ptd-chart-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+.ptd-grid-line { stroke: var(--ptd-grid); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ptd-area { fill: var(--series); opacity: .12; }
+.ptd-line-path {
+    fill: none;
+    stroke: var(--series);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+}
+.ptd-cross {
+    stroke: var(--ptd-line-2);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+    vector-effect: non-scaling-stroke;
+    opacity: 0;
+}
+.ptd-focus-dot {
+    fill: var(--series);
+    stroke: var(--ptd-bg);
+    stroke-width: 2;
+    opacity: 0;
+    r: 4;
+}
+.ptd-chart-plot.is-hover .ptd-cross,
+.ptd-chart-plot.is-hover .ptd-focus-dot { opacity: 1; }
+
+/* Randbeschriftung: nur Extremwerte, nie jeder Punkt */
+.ptd-axis-label {
+    font-family: var(--ptd-font);
+    font-size: 9.5px;
+    fill: var(--ptd-faint);
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- Sprechblase --------------------------------------------------------- */
+
+.ptd-chart-tip {
+    position: absolute;
+    z-index: 12;
+    transform: translate(-50%, -100%);
+    padding: .35rem .55rem;
+    background: var(--ptd-surface-2);
+    border: 1px solid var(--ptd-line-2);
+    border-radius: var(--ptd-r-xs);
+    box-shadow: var(--ptd-e3);
+    font-size: var(--ptd-fs-xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--ptd-text);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--ptd-t-fast) var(--ptd-ease);
+}
+.ptd-chart-plot.is-hover .ptd-chart-tip { opacity: 1; }
+.ptd-chart-tip b { font-weight: 660; }
+.ptd-chart-tip span { display: block; color: var(--ptd-faint); font-size: .95em; }
+
+/* --- Fuss ---------------------------------------------------------------- */
+
+.ptd-chart-foot {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-top: .35rem;
+    padding-top: .4rem;
+    border-top: 1px solid var(--ptd-line);
+    font-size: 9.5px;
+    letter-spacing: -0.005em;
+    color: var(--ptd-faint);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.ptd-chart-foot dl { display: flex; gap: .45rem; margin: 0; min-width: 0; }
+.ptd-chart-foot div { display: flex; gap: .22rem; white-space: nowrap; }
+.ptd-chart-foot dt { opacity: .7; }
+.ptd-chart-foot dd { margin: 0; color: var(--ptd-text-2); font-weight: 570; white-space: nowrap; }
+.ptd-chart-foot dl { justify-content: space-between; width: 100%; }
+
+/* Warnstufen faerben nur die Kennzahl, nicht die Serienfarbe der Kurve */
+.ptd-chart[data-level="warn"]   .ptd-chart-value { color: var(--ptd-warn); }
+.ptd-chart[data-level="danger"] .ptd-chart-value { color: var(--ptd-danger); }
+.ptd-chart[data-level="warn"]   .ptd-chart-sub::before,
+.ptd-chart[data-level="danger"] .ptd-chart-sub::before {
+    content: "";
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+}
+.ptd-chart[data-level="warn"]   .ptd-chart-sub { color: var(--ptd-warn); }
+.ptd-chart[data-level="danger"] .ptd-chart-sub { color: var(--ptd-danger); }
+
+/* --- Legende (nur bei zwei oder mehr Serien) ----------------------------- */
+
+.ptd-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    margin-top: .3rem;
+    font-size: var(--ptd-fs-xs);
+    color: var(--ptd-text-2);
+}
+.ptd-legend span { display: inline-flex; align-items: center; gap: .35rem; }
+.ptd-legend i { width: 8px; height: 8px; border-radius: 2px; background: var(--series); flex: none; }
+
+/* --- Leerzustand --------------------------------------------------------- */
+
+.ptd-chart.is-empty .ptd-chart-plot { opacity: .35; }
+.ptd-chart.is-empty .ptd-chart-value { color: var(--ptd-faint); }

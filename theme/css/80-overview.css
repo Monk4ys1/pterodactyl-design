@@ -1,0 +1,222 @@
+/* =========================================================================
+   Nebula · 80-overview.css
+   Serveruebersicht auf dem Dashboard: Kacheln mit Live-Auslastung,
+   Statusring und Schnellsteuerung.
+   ========================================================================= */
+
+#ptd-hero {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--ptd-gap);
+    max-width: var(--ptd-max-w);
+    margin: calc(1.4rem * var(--ptd-density)) auto calc(.6rem * var(--ptd-density));
+    padding-inline: calc(1.35rem * var(--ptd-density));
+}
+#ptd-hero h1 {
+    margin: 0;
+    font-size: var(--ptd-fs-display) !important;
+    line-height: var(--ptd-lh-display);
+    letter-spacing: var(--ptd-tr-display);
+    font-weight: 680;
+}
+#ptd-hero p { margin: .25rem 0 0; color: var(--ptd-muted); font-size: var(--ptd-fs-sm); }
+
+.ptd-hero-stats { display: flex; gap: .5rem; flex-wrap: wrap; }
+.ptd-hero-stat {
+    display: flex;
+    flex-direction: column;
+    gap: .1rem;
+    min-width: 84px;
+    padding: .5rem .75rem;
+    background: var(--ptd-card);
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r-sm);
+    box-shadow: var(--ptd-rim);
+}
+.ptd-hero-stat b {
+    font-size: 1.1rem;
+    font-weight: 660;
+    letter-spacing: -.02em;
+    color: var(--ptd-text);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+}
+.ptd-hero-stat span {
+    font-size: var(--ptd-fs-label);
+    letter-spacing: var(--ptd-tr-label);
+    text-transform: uppercase;
+    font-weight: 640;
+    color: var(--ptd-faint);
+}
+.ptd-hero-stat[data-tone="ok"] b { color: var(--ptd-ok); }
+.ptd-hero-stat[data-tone="warn"] b { color: var(--ptd-warn); }
+
+/* =========================================================================
+   Serverkacheln
+   ========================================================================= */
+
+#ptd-overview {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--ptd-gap);
+    max-width: var(--ptd-max-w);
+    margin: 0 auto;
+    padding: 0 calc(1.35rem * var(--ptd-density));
+}
+
+.ptd-sv {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: .7rem;
+    padding: .95rem 1rem 1rem;
+    background: var(--ptd-card);
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r);
+    box-shadow: var(--ptd-e1), var(--ptd-rim);
+    text-decoration: none !important;
+    color: inherit;
+    overflow: hidden;
+    transition: transform var(--ptd-t-base) var(--ptd-ease),
+                border-color var(--ptd-t-base) var(--ptd-ease),
+                box-shadow var(--ptd-t-base) var(--ptd-ease);
+}
+.ptd-sv::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 80% at 0% 0%, color-mix(in srgb, var(--tag, var(--ptd-accent)) 12%, transparent), transparent 55%);
+    opacity: 0;
+    transition: opacity var(--ptd-t-base) var(--ptd-ease);
+    pointer-events: none;
+}
+.ptd-sv:hover {
+    transform: translateY(-2px);
+    border-color: var(--ptd-line-2);
+    box-shadow: var(--ptd-e3), var(--ptd-rim);
+}
+.ptd-sv:hover::before { opacity: 1; }
+.ptd-sv:active { transform: translateY(0) scale(.995); transition-duration: var(--ptd-t-press); }
+
+.ptd-sv-top { display: flex; align-items: center; gap: .65rem; }
+
+.ptd-sv-mark {
+    width: 34px; height: 34px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--tag, var(--ptd-accent)) 20%, transparent);
+    color: var(--tag, var(--ptd-accent));
+    font-size: 13px;
+    font-weight: 720;
+    letter-spacing: -.02em;
+    box-shadow: var(--ptd-rim);
+}
+
+.ptd-sv-id { flex: 1; min-width: 0; }
+.ptd-sv-name {
+    display: block;
+    font-size: var(--ptd-fs-h3);
+    font-weight: 620;
+    letter-spacing: var(--ptd-tr-h3);
+    color: var(--ptd-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ptd-sv-meta {
+    display: block;
+    font-size: var(--ptd-fs-xs);
+    font-family: var(--ptd-mono);
+    color: var(--ptd-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ptd-sv-state {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    flex: none;
+    padding: .15rem .5rem;
+    border-radius: var(--ptd-r-pill);
+    font-size: var(--ptd-fs-label);
+    font-weight: 680;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    border: 1px solid var(--ptd-line);
+    background: var(--ptd-veil-2);
+    color: var(--ptd-offline);
+}
+.ptd-sv[data-state="running"] .ptd-sv-state  { color: var(--ptd-ok);     border-color: color-mix(in srgb, var(--ptd-ok) 32%, transparent); }
+.ptd-sv[data-state="starting"] .ptd-sv-state,
+.ptd-sv[data-state="stopping"] .ptd-sv-state { color: var(--ptd-warn);   border-color: color-mix(in srgb, var(--ptd-warn) 32%, transparent); }
+.ptd-sv[data-state="suspended"] .ptd-sv-state{ color: var(--ptd-danger); border-color: color-mix(in srgb, var(--ptd-danger) 32%, transparent); }
+
+/* --- Auslastung ---------------------------------------------------------- */
+
+.ptd-sv-usage { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem .9rem; }
+.ptd-sv-u { display: flex; flex-direction: column; gap: .28rem; }
+.ptd-sv-u-top { display: flex; align-items: baseline; justify-content: space-between; gap: .4rem; }
+.ptd-sv-u-label {
+    font-size: var(--ptd-fs-label);
+    letter-spacing: var(--ptd-tr-label);
+    text-transform: uppercase;
+    font-weight: 660;
+    color: var(--ptd-faint);
+}
+.ptd-sv-u-value {
+    font-size: var(--ptd-fs-xs);
+    font-weight: 600;
+    color: var(--ptd-text-2);
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- Schnellsteuerung ---------------------------------------------------- */
+
+/* Dauerhaft sichtbar, aber zurueckhaltend: Steuerelemente zu verstecken
+   spart keinen Platz und macht sie nur schwerer auffindbar. */
+.ptd-sv-actions {
+    display: flex;
+    gap: .3rem;
+    margin-top: .1rem;
+    opacity: .62;
+    transition: opacity var(--ptd-t-fast) var(--ptd-ease);
+}
+.ptd-sv:hover .ptd-sv-actions,
+.ptd-sv:focus-within .ptd-sv-actions { opacity: 1; }
+
+.ptd-sv-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    height: 26px;
+    padding: 0 .55rem;
+    font-size: var(--ptd-fs-xs);
+    font-weight: 590;
+    color: var(--ptd-text-2);
+    background: var(--ptd-veil-2);
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r-xs);
+    cursor: pointer;
+    transition: color var(--ptd-t-fast) var(--ptd-ease),
+                background-color var(--ptd-t-fast) var(--ptd-ease),
+                border-color var(--ptd-t-fast) var(--ptd-ease),
+                transform var(--ptd-t-press) var(--ptd-ease);
+}
+.ptd-sv-btn:hover { color: var(--ptd-text); background: var(--ptd-veil-3); border-color: var(--ptd-line-2); }
+.ptd-sv-btn:active { transform: scale(.94); }
+.ptd-sv-btn svg { width: 11px; height: 11px; }
+.ptd-sv-btn[data-act="start"]:hover   { color: var(--ptd-ok);     border-color: color-mix(in srgb, var(--ptd-ok) 40%, transparent); }
+.ptd-sv-btn[data-act="restart"]:hover { color: var(--ptd-info);   border-color: color-mix(in srgb, var(--ptd-info) 40%, transparent); }
+.ptd-sv-btn[data-act="stop"]:hover    { color: var(--ptd-danger); border-color: color-mix(in srgb, var(--ptd-danger) 40%, transparent); }
+.ptd-sv-btn .ptd-sv-pin-on { color: var(--ptd-accent); }
+
+.ptd-sv-spacer { flex: 1 1 auto; }
+
+/* Originalliste des Panels ausblenden, wenn die Uebersicht laeuft */
+html[data-ptd-overview="1"] [data-ptd="server-card"] { display: none !important; }

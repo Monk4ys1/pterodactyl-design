@@ -9,9 +9,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${1:-$ROOT/dist}"
 VERSION="$(tr -d ' \n\r' < "$ROOT/VERSION")"
 
-CLIENT_CSS=(00-tokens.css 10-base.css 20-layout.css 30-components.css 40-console.css 50-auth.css 60-ptd-ui.css)
+CLIENT_CSS=(00-tokens.css 10-base.css 20-shell.css 30-components.css 40-console.css
+            50-auth.css 60-ptd-ui.css 70-charts.css 80-overview.css)
 ADMIN_CSS=(00-tokens.css admin.css)
-CLIENT_JS=(00-boot.js 10-core.js 20-tagger.js 30-settings.js 40-palette.js 50-console.js 60-stats.js 70-notify.js 80-shortcuts.js 90-enhance.js)
+CLIENT_JS=(00-boot.js 10-core.js 20-tagger.js 25-rail.js 30-settings.js 40-palette.js
+           50-console.js 60-stats.js 65-overview.js 70-notify.js 80-shortcuts.js
+           85-tags.js 90-enhance.js)
 ADMIN_JS=(00-boot.js 10-core.js 30-settings.js)
 
 banner() {

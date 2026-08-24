@@ -1,79 +1,150 @@
 /* =========================================================================
    Nebula · 00-tokens.css
-   Design-Tokens, Farbpresets, Light-Mode, Dichte- und Radius-Steuerung.
-   Alle Werte sind zur Laufzeit ueber CSS-Custom-Properties ueberschreibbar
+   Gestaltungsraster: Flaechen, Rahmenlicht, Elevation, Typoskala, Bewegung.
+   Alles ist zur Laufzeit ueber CSS-Custom-Properties veraenderbar
    (siehe theme/js/30-settings.js).
    ========================================================================= */
 
 :root {
-    /* --- Struktur ------------------------------------------------------- */
-    --ptd-r: 14px;                       /* Basis-Radius            */
-    --ptd-r-sm: calc(var(--ptd-r) * 0.55);
-    --ptd-r-lg: calc(var(--ptd-r) * 1.45);
+    /* ---------------------------------------------------------------------
+       Geometrie
+       ------------------------------------------------------------------- */
+    --ptd-r-xs: 8px;
+    --ptd-r-sm: 10px;
+    --ptd-r: 16px;                       /* Karten                       */
+    --ptd-r-lg: 22px;                    /* Grosse Flaechen              */
     --ptd-r-pill: 999px;
-    --ptd-blur: 18px;                    /* Glas-Unschaerfe         */
-    --ptd-density: 1;                    /* 0.8 = kompakt, 1.15 = luftig */
+    --ptd-blur: 22px;
+    --ptd-density: 1;                    /* .82 kompakt … 1.15 luftig    */
     --ptd-gap: calc(1rem * var(--ptd-density));
-    --ptd-speed: 1;                      /* 0 = Animationen aus     */
-    --ptd-nav-h: 60px;
-    --ptd-max-w: 1240px;
+    --ptd-gap-lg: calc(1.5rem * var(--ptd-density));
+    --ptd-max-w: 1320px;
 
-    /* --- Akzent (wird vom Preset gesetzt) -------------------------------- */
-    --ptd-accent: #7c6cff;
-    --ptd-accent-2: #22d3ee;
-    --ptd-accent-ink: #ffffff;
-    --ptd-accent-soft: color-mix(in srgb, var(--ptd-accent) 18%, transparent);
-    --ptd-accent-line: color-mix(in srgb, var(--ptd-accent) 42%, transparent);
-    --ptd-glow: color-mix(in srgb, var(--ptd-accent) 45%, transparent);
+    /* Seitenschiene */
+    --ptd-rail-w: 244px;
+    --ptd-rail-w-mini: 68px;
+    --ptd-topbar-h: 58px;
 
-    /* --- Flaechen -------------------------------------------------------- */
-    --ptd-bg: #080a11;                   /* Seite                    */
-    --ptd-bg-alt: #0c0f18;               /* Seite, zweite Ebene      */
-    --ptd-surface: #12151f;              /* Karte                    */
-    --ptd-surface-2: #171b28;            /* Karte, erhoeht           */
-    --ptd-surface-3: #1e2333;            /* Hover / Input            */
-    --ptd-surface-glass: rgba(20, 24, 36, 0.66);
+    /* ---------------------------------------------------------------------
+       Akzent (vom Preset gesetzt)
+       ------------------------------------------------------------------- */
+    --ptd-accent: #8b7cff;
+    --ptd-accent-2: #2dd4bf;
+    --ptd-accent-ink: #0b0a1a;
+    --ptd-accent-soft: color-mix(in srgb, var(--ptd-accent) 16%, transparent);
+    --ptd-accent-line: color-mix(in srgb, var(--ptd-accent) 38%, transparent);
+    --ptd-glow: color-mix(in srgb, var(--ptd-accent) 40%, transparent);
+
+    /* ---------------------------------------------------------------------
+       Flaechen
+       Das Material entsteht aus einem Verlauf plus Rahmenlicht, nicht aus
+       einer flachen Fuellfarbe – dadurch bekommen Karten Tiefe.
+       ------------------------------------------------------------------- */
+    --ptd-bg: #07080d;
+    --ptd-bg-2: #0a0c12;
+    --ptd-veil: rgba(255, 255, 255, 0.038);      /* Karte                */
+    --ptd-veil-2: rgba(255, 255, 255, 0.06);     /* erhoehte Flaeche     */
+    --ptd-veil-3: rgba(255, 255, 255, 0.09);     /* Hover / Eingabe      */
+    --ptd-veil-4: rgba(255, 255, 255, 0.14);     /* aktiv                */
+
+    --ptd-surface: #101219;                      /* deckend, falls noetig */
+    --ptd-surface-2: #151823;
+    --ptd-surface-3: #1c2030;
+
+    --ptd-card: linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .018));
+    --ptd-glass: rgba(14, 16, 24, 0.72);
+
     --ptd-line: rgba(255, 255, 255, 0.075);
-    --ptd-line-strong: rgba(255, 255, 255, 0.14);
+    --ptd-line-2: rgba(255, 255, 255, 0.13);
+    --ptd-rim: inset 0 1px 0 rgba(255, 255, 255, .07);
+    --ptd-rim-strong: inset 0 1px 0 rgba(255, 255, 255, .12);
 
-    /* --- Text ------------------------------------------------------------ */
-    --ptd-text: #e8eaf2;
-    --ptd-text-soft: #b4bacb;
-    --ptd-muted: #8a93a9;
-    --ptd-faint: #5f677c;
+    /* ---------------------------------------------------------------------
+       Text
+       ------------------------------------------------------------------- */
+    --ptd-text: #edeff6;
+    --ptd-text-2: #a9b0c3;
+    --ptd-text-3: #79809680;
+    --ptd-muted: #7d8497;
+    --ptd-faint: #575e73;
 
-    /* --- Status ---------------------------------------------------------- */
-    --ptd-ok: #34d399;
-    --ptd-warn: #fbbf24;
-    --ptd-danger: #f87171;
-    --ptd-info: #38bdf8;
-    --ptd-offline: #6b7280;
+    /* ---------------------------------------------------------------------
+       Status – reserviert, nie als Serienfarbe verwenden
+       ------------------------------------------------------------------- */
+    --ptd-ok: #3ddc97;
+    --ptd-warn: #f5b73d;
+    --ptd-danger: #ff6b7f;
+    --ptd-info: #4cc4f5;
+    --ptd-offline: #5b6275;
 
-    /* --- Schatten -------------------------------------------------------- */
-    --ptd-shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
-    --ptd-shadow: 0 8px 24px -8px rgba(0, 0, 0, .65), 0 2px 6px rgba(0, 0, 0, .3);
-    --ptd-shadow-lg: 0 28px 70px -22px rgba(0, 0, 0, .8), 0 6px 18px rgba(0, 0, 0, .35);
+    /* ---------------------------------------------------------------------
+       Diagrammfarben – feste Reihenfolge, nie zyklisch vergeben
+       ------------------------------------------------------------------- */
+    /* Geprueft mit dem Validator des dataviz-Regelwerks: Helligkeitsband,
+       Chroma-Untergrenze, CVD-Abstand (Protan/Deutan/Tritan), Kontrast zur
+       Flaeche. Die Reihenfolge ist fest und wird nie zyklisch vergeben.
+       Diese Farben folgen bewusst nicht dem Akzentpreset, damit die Serien
+       untereinander unterscheidbar bleiben. */
+    --ptd-c1: #8b7cff;   /* CPU            */
+    --ptd-c2: #0d9488;   /* Arbeitsspeicher */
+    --ptd-c3: #b57f14;   /* Netzwerk       */
+    --ptd-c4: #d94a7e;   /* Festplatte     */
+    --ptd-grid: rgba(255, 255, 255, 0.055);
+
+    /* ---------------------------------------------------------------------
+       Elevation
+       ------------------------------------------------------------------- */
+    --ptd-e1: 0 1px 2px rgba(0, 0, 0, .40);
+    --ptd-e2: 0 4px 14px -6px rgba(0, 0, 0, .55), 0 1px 3px rgba(0, 0, 0, .30);
+    --ptd-e3: 0 18px 44px -16px rgba(0, 0, 0, .65), 0 4px 12px rgba(0, 0, 0, .32);
+    --ptd-e4: 0 40px 90px -26px rgba(0, 0, 0, .78), 0 10px 28px rgba(0, 0, 0, .40);
     --ptd-ring: 0 0 0 3px var(--ptd-accent-soft);
 
-    /* --- Typografie ------------------------------------------------------ */
-    --ptd-font: "Inter var", "Inter", ui-sans-serif, system-ui, -apple-system,
-                "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --ptd-mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular,
-                "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    /* ---------------------------------------------------------------------
+       Typografie
+       Tracking ist groessenabhaengig: grosse Schrift enger, kleine weiter.
+       ------------------------------------------------------------------- */
+    --ptd-font: "InterVariable", "Inter var", "Inter", ui-sans-serif, system-ui,
+                -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --ptd-mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, "SF Mono",
+                Menlo, Consolas, "Liberation Mono", monospace;
 
-    /* --- Terminal ---------------------------------------------------------
-       Bewusst modusunabhaengig: xterm.js zeichnet seine Vordergrundfarben auf
-       ein Canvas und laesst sich per CSS nicht umfaerben. Ein helles Terminal
-       waere dadurch unlesbar. */
-    --ptd-term-bg: #0a0d15;
-    --ptd-term-bg-2: #0e121c;
-    --ptd-term-text: #cfd4e2;
-    --ptd-term-muted: #6b7488;
-    --ptd-term-line: rgba(255, 255, 255, 0.08);
+    --ptd-fs-display: 1.75rem;   --ptd-lh-display: 1.08; --ptd-tr-display: -0.028em;
+    --ptd-fs-h1: 1.375rem;       --ptd-lh-h1: 1.16;      --ptd-tr-h1: -0.024em;
+    --ptd-fs-h2: 1.0625rem;      --ptd-lh-h2: 1.3;       --ptd-tr-h2: -0.017em;
+    --ptd-fs-h3: .9375rem;       --ptd-lh-h3: 1.4;       --ptd-tr-h3: -0.011em;
+    --ptd-fs-body: .875rem;      --ptd-lh-body: 1.55;    --ptd-tr-body: -0.003em;
+    --ptd-fs-sm: .8125rem;       --ptd-lh-sm: 1.5;       --ptd-tr-sm: 0em;
+    --ptd-fs-xs: .75rem;         --ptd-lh-xs: 1.45;      --ptd-tr-xs: .006em;
+    --ptd-fs-label: .6875rem;    --ptd-lh-label: 1.35;   --ptd-tr-label: .085em;
 
-    /* --- Hintergrund-Ebene ----------------------------------------------- */
-    --ptd-canvas-1: color-mix(in srgb, var(--ptd-accent) 22%, transparent);
-    --ptd-canvas-2: color-mix(in srgb, var(--ptd-accent-2) 18%, transparent);
+    /* ---------------------------------------------------------------------
+       Bewegung
+       Die Kurven bilden kritisch gedaempfte Federn nach: schneller Anlauf,
+       weiches Einschwingen, kein Ueberschwingen. Ueberschwingen bleibt den
+       Bewegungen vorbehalten, denen eine Geste vorausging.
+       ------------------------------------------------------------------- */
+    --ptd-ease: cubic-bezier(.22, 1, .36, 1);
+    --ptd-ease-in-out: cubic-bezier(.65, 0, .35, 1);
+    --ptd-ease-spring: cubic-bezier(.34, 1.28, .64, 1);
+    --ptd-t-press: .1s;
+    --ptd-t-fast: .17s;
+    --ptd-t-base: .26s;
+    --ptd-t-slow: .4s;
+
+    /* ---------------------------------------------------------------------
+       Terminal – bewusst modusunabhaengig, weil xterm.js seine Farben auf
+       ein Canvas zeichnet und per CSS nicht umgefaerbt werden kann.
+       ------------------------------------------------------------------- */
+    --ptd-term-bg: #06070c;
+    --ptd-term-bg-2: #0a0c13;
+    --ptd-term-text: #ced4e4;
+    --ptd-term-muted: #6a7286;
+    --ptd-term-line: rgba(255, 255, 255, 0.07);
+
+    /* Hintergrundebene */
+    --ptd-canvas-1: color-mix(in srgb, var(--ptd-accent) 30%, transparent);
+    --ptd-canvas-2: color-mix(in srgb, var(--ptd-accent-2) 22%, transparent);
     --ptd-canvas-opacity: 1;
 
     color-scheme: dark;
@@ -83,126 +154,68 @@
    Farbpresets
    ========================================================================= */
 
-html[data-ptd-preset="nebula"] {
-    --ptd-accent: #7c6cff;
-    --ptd-accent-2: #22d3ee;
-    --ptd-bg: #080a11;
-    --ptd-bg-alt: #0c0f18;
-    --ptd-surface: #12151f;
-    --ptd-surface-2: #171b28;
-    --ptd-surface-3: #1e2333;
-}
-
-html[data-ptd-preset="ocean"] {
-    --ptd-accent: #3b82f6;
-    --ptd-accent-2: #06b6d4;
-    --ptd-bg: #060b14;
-    --ptd-bg-alt: #08111d;
-    --ptd-surface: #0e1725;
-    --ptd-surface-2: #131e30;
-    --ptd-surface-3: #1a2839;
-}
-
-html[data-ptd-preset="forest"] {
-    --ptd-accent: #22c55e;
-    --ptd-accent-2: #a3e635;
-    --ptd-bg: #060d0a;
-    --ptd-bg-alt: #081411;
-    --ptd-surface: #0d1a15;
-    --ptd-surface-2: #11221b;
-    --ptd-surface-3: #172d24;
-}
-
-html[data-ptd-preset="ember"] {
-    --ptd-accent: #f97316;
-    --ptd-accent-2: #ef4444;
-    --ptd-bg: #0d0705;
-    --ptd-bg-alt: #140b07;
-    --ptd-surface: #1b100b;
-    --ptd-surface-2: #22150e;
-    --ptd-surface-3: #2c1c13;
-}
-
-html[data-ptd-preset="rose"] {
-    --ptd-accent: #ec4899;
-    --ptd-accent-2: #a855f7;
-    --ptd-bg: #0c0710;
-    --ptd-bg-alt: #120a17;
-    --ptd-surface: #19101f;
-    --ptd-surface-2: #201528;
-    --ptd-surface-3: #2b1d34;
-}
-
-html[data-ptd-preset="solar"] {
-    --ptd-accent: #eab308;
-    --ptd-accent-2: #f97316;
-    --ptd-accent-ink: #201700;
-    --ptd-bg: #0b0a05;
-    --ptd-bg-alt: #110f07;
-    --ptd-surface: #17150c;
-    --ptd-surface-2: #1e1b10;
-    --ptd-surface-3: #292416;
-}
-
-html[data-ptd-preset="midnight"] {
-    --ptd-accent: #6366f1;
-    --ptd-accent-2: #8b5cf6;
-    --ptd-bg: #05060d;
-    --ptd-bg-alt: #080a14;
-    --ptd-surface: #0d1020;
-    --ptd-surface-2: #111529;
-    --ptd-surface-3: #191e36;
-}
-
-html[data-ptd-preset="mono"] {
-    --ptd-accent: #e5e7eb;
-    --ptd-accent-2: #9ca3af;
-    --ptd-accent-ink: #0b0b0d;
-    --ptd-bg: #08090b;
-    --ptd-bg-alt: #0c0d10;
-    --ptd-surface: #121316;
-    --ptd-surface-2: #17191d;
-    --ptd-surface-3: #202329;
-    --ptd-canvas-opacity: .35;
-}
+html[data-ptd-preset="nebula"]  { --ptd-accent: #8b7cff; --ptd-accent-2: #2dd4bf; --ptd-bg: #07080d; --ptd-bg-2: #0a0c12; }
+html[data-ptd-preset="ocean"]   { --ptd-accent: #4d90ff; --ptd-accent-2: #22d3ee; --ptd-bg: #05080f; --ptd-bg-2: #070c15; }
+html[data-ptd-preset="forest"]  { --ptd-accent: #34d399; --ptd-accent-2: #a3e635; --ptd-accent-ink: #04180f; --ptd-bg: #050b09; --ptd-bg-2: #071110; }
+html[data-ptd-preset="ember"]   { --ptd-accent: #ff8a4c; --ptd-accent-2: #ff5470; --ptd-accent-ink: #1c0a02; --ptd-bg: #0b0705; --ptd-bg-2: #110a07; }
+html[data-ptd-preset="rose"]    { --ptd-accent: #ff6b9d; --ptd-accent-2: #b57bff; --ptd-accent-ink: #1b0710; --ptd-bg: #0a0610; --ptd-bg-2: #0f0916; }
+html[data-ptd-preset="solar"]   { --ptd-accent: #f5c542; --ptd-accent-2: #ff9f45; --ptd-accent-ink: #1a1300; --ptd-bg: #0a0905; --ptd-bg-2: #100e08; }
+html[data-ptd-preset="mono"]    { --ptd-accent: #d9dde8; --ptd-accent-2: #8d95a8; --ptd-accent-ink: #0a0b0e; --ptd-bg: #08090b; --ptd-bg-2: #0c0d11; --ptd-canvas-opacity: .3; }
+html[data-ptd-preset="carbon"]  { --ptd-accent: #5eead4; --ptd-accent-2: #38bdf8; --ptd-accent-ink: #03191a; --ptd-bg: #08090c; --ptd-bg-2: #0b0d11; }
 
 /* =========================================================================
-   Light-Mode  ·  html[data-ptd-mode="light"]
+   Hellmodus
+   Eigene Werte, keine automatische Umkehrung.
    ========================================================================= */
 
 html[data-ptd-mode="light"] {
-    --ptd-bg: #f4f5fa;
-    --ptd-bg-alt: #eceef6;
+    --ptd-bg: #f2f4f9;
+    --ptd-bg-2: #e9ecf4;
+    --ptd-veil: rgba(255, 255, 255, 0.92);
+    --ptd-veil-2: rgba(16, 20, 40, 0.035);
+    --ptd-veil-3: rgba(16, 20, 40, 0.06);
+    --ptd-veil-4: rgba(16, 20, 40, 0.10);
     --ptd-surface: #ffffff;
-    --ptd-surface-2: #f8f9fd;
-    --ptd-surface-3: #eef0f7;
-    --ptd-surface-glass: rgba(255, 255, 255, 0.72);
-    --ptd-line: rgba(16, 20, 40, 0.09);
-    --ptd-line-strong: rgba(16, 20, 40, 0.16);
-    --ptd-text: #12151f;
-    --ptd-text-soft: #3d4457;
-    --ptd-muted: #626b80;
-    --ptd-faint: #949cae;
-    --ptd-ok: #059669;
+    --ptd-surface-2: #f7f9fd;
+    --ptd-surface-3: #eef1f8;
+    --ptd-card: linear-gradient(180deg, #ffffff, #fbfcfe);
+    --ptd-glass: rgba(255, 255, 255, 0.78);
+    --ptd-line: rgba(16, 20, 40, 0.085);
+    --ptd-line-2: rgba(16, 20, 40, 0.16);
+    --ptd-rim: inset 0 1px 0 rgba(255, 255, 255, .9);
+    --ptd-rim-strong: inset 0 1px 0 rgba(255, 255, 255, 1);
+    --ptd-text: #10131d;
+    --ptd-text-2: #3a4157;
+    --ptd-muted: #5d657a;
+    --ptd-faint: #8b93a6;
+    --ptd-ok: #0e9f6e;
     --ptd-warn: #b45309;
-    --ptd-danger: #dc2626;
+    --ptd-danger: #dc2b45;
     --ptd-info: #0284c7;
-    --ptd-offline: #94a3b8;
-    --ptd-shadow-sm: 0 1px 2px rgba(16, 20, 40, .07);
-    --ptd-shadow: 0 10px 26px -12px rgba(16, 20, 40, .28), 0 2px 6px rgba(16, 20, 40, .06);
-    --ptd-shadow-lg: 0 30px 70px -26px rgba(16, 20, 40, .32), 0 8px 20px rgba(16, 20, 40, .08);
-    --ptd-canvas-opacity: .55;
+    --ptd-offline: #97a0b3;
+    --ptd-c1: #6d5ce0;
+    --ptd-c2: #0f9f8f;
+    --ptd-c3: #b7791f;
+    --ptd-c4: #d6407f;
+    --ptd-grid: rgba(16, 20, 40, 0.07);
+    --ptd-e1: 0 1px 2px rgba(16, 20, 40, .06);
+    --ptd-e2: 0 6px 16px -8px rgba(16, 20, 40, .22), 0 1px 3px rgba(16, 20, 40, .05);
+    --ptd-e3: 0 20px 44px -20px rgba(16, 20, 40, .28), 0 4px 12px rgba(16, 20, 40, .07);
+    --ptd-e4: 0 44px 90px -32px rgba(16, 20, 40, .34), 0 10px 28px rgba(16, 20, 40, .10);
+    --ptd-canvas-opacity: .5;
     color-scheme: light;
 }
 
 /* =========================================================================
-   Dichte / Radius / Animation – Schalter
+   Schalter
    ========================================================================= */
 
-html[data-ptd-compact="1"] { --ptd-density: .78; --ptd-nav-h: 52px; }
-html[data-ptd-wide="1"]    { --ptd-max-w: 1600px; }
-html[data-ptd-glass="0"]   { --ptd-blur: 0px; --ptd-surface-glass: var(--ptd-surface); }
+html[data-ptd-compact="1"] { --ptd-density: .82; --ptd-topbar-h: 50px; --ptd-r: 13px; --ptd-r-lg: 18px; }
+html[data-ptd-wide="1"]    { --ptd-max-w: 1720px; }
+html[data-ptd-glass="0"]   { --ptd-blur: 0px; --ptd-glass: var(--ptd-surface); }
+html[data-ptd-rail="mini"] { --ptd-rail-w: var(--ptd-rail-w-mini); }
 
+/* Bewegung reduzieren – Deckkraft bleibt, Verschiebungen entfallen */
 html[data-ptd-motion="0"] *,
 html[data-ptd-motion="0"] *::before,
 html[data-ptd-motion="0"] *::after {
@@ -219,5 +232,22 @@ html[data-ptd-motion="0"] *::after {
         animation-duration: 1ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 1ms !important;
+    }
+}
+
+/* Weniger Transparenz: Material wird deckend statt milchig */
+@media (prefers-reduced-transparency: reduce) {
+    :root {
+        --ptd-blur: 0px;
+        --ptd-glass: var(--ptd-surface);
+    }
+}
+
+@media (prefers-contrast: more) {
+    :root {
+        --ptd-line: rgba(255, 255, 255, 0.22);
+        --ptd-line-2: rgba(255, 255, 255, 0.34);
+        --ptd-text-2: #d3d8e6;
+        --ptd-muted: #a8b0c4;
     }
 }

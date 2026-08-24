@@ -41,13 +41,15 @@
     /* ---------------------------------------------------------------------
        Standardeinstellungen
        ------------------------------------------------------------------- */
+    var PRESETS = ['nebula', 'ocean', 'forest', 'ember', 'rose', 'solar', 'mono', 'carbon'];
+
     var DEFAULTS = {
-        v: 1,
+        v: 2,
         preset: 'nebula',
         mode: 'dark',              // dark | light | auto
         accent: '',                // leer = Preset-Farbe
-        radius: 14,
-        blur: 18,
+        radius: 16,
+        blur: 22,
         compact: false,
         wide: false,
         glass: true,
@@ -56,11 +58,16 @@
         bgImage: '',
         webfonts: true,
         fab: true,
-        greeting: true,
         footer: true,
+        rail: 'full',              // full | mini
+        clock: true,
         modules: {
+            rail: true,
             palette: true,
+            overview: true,
             console: true,
+            snippets: true,
+            dock: true,
             charts: true,
             notify: true,
             shortcuts: true,
@@ -70,7 +77,21 @@
         notifySound: false,
         consoleTimestamps: true,
         consoleFontSize: 13,
-        historyPoints: 90
+        historyPoints: 120,
+        /* Schwellwerte fuer Auslastungswarnungen (Prozent, 0 = aus) */
+        alertCpu: 90,
+        alertMem: 90,
+        alertHold: 20,             // Sekunden ueber dem Schwellwert
+        /* Schluesselwoerter, die in der Konsole ueberwacht werden */
+        watchers: [],
+        /* Kurzbefehle je Server: { "<id>": ["stop", "say hi"] } */
+        snippets: {},
+        /* Servermarkierungen: { "<id>": { color: "#…", label: "AB" } } */
+        tags: {},
+        /* Angeheftete Server */
+        favorites: [],
+        /* Zuletzt besuchte Server */
+        recents: []
     };
 
     function deepMerge(base, over) {
@@ -112,6 +133,7 @@
 
     function apply(s) {
         var h = document.documentElement;
+        if (PRESETS.indexOf(s.preset) === -1) s.preset = 'nebula';
         h.setAttribute('data-ptd', VERSION);
         h.setAttribute('data-ptd-preset', s.preset);
         h.setAttribute('data-ptd-mode', resolveMode(s.mode));
@@ -121,6 +143,8 @@
         h.setAttribute('data-ptd-motion', s.motion ? '1' : '0');
         h.setAttribute('data-ptd-bg', s.bg);
         h.setAttribute('data-ptd-fab', s.fab ? '1' : '0');
+        h.setAttribute('data-ptd-rail', s.rail === 'mini' ? 'mini' : 'full');
+        h.setAttribute('data-ptd-shell', s.modules.rail ? 'rail' : 'top');
 
         var st = h.style;
         st.setProperty('--ptd-r', s.radius + 'px');
@@ -141,18 +165,22 @@
        Datenspeicher: Konsolenzeilen und Statistikverlauf je Server
        ------------------------------------------------------------------- */
     var store = {
+        socket: null,         // aktive Wings-Verbindung (nur lesend genutzt + send command)
         lines: [],            // { t: epochMs, text: string, lvl: string }
-        maxLines: 2500,
+        maxLines: 4000,
         stats: [],            // { t, cpu, mem, memLimit, disk, rx, tx }
         maxStats: 600,
         state: 'offline',
         lastStats: null,
         serverId: null,
+        restarts: 0,          // Statuswechsel offline -> running in dieser Sitzung
         reset: function () {
             this.lines = [];
             this.stats = [];
             this.state = 'offline';
             this.lastStats = null;
+            this.restarts = 0;
+            this.socket = null;
         }
     };
 
@@ -233,6 +261,7 @@
                     var to = String(ev0 || 'offline');
                     if (to !== store.state) {
                         var from = store.state;
+                        if (from === 'starting' && to === 'running') store.restarts++;
                         store.state = to;
                         bus.emit('state', { from: from, to: to });
                     }
@@ -266,6 +295,7 @@
             try {
                 if (WS_RE.test(String(url))) {
                     store.reset();
+                    store.socket = sock;
                     hookSocket(sock, String(url));
                 }
             } catch (e) { /* Der Panel-Betrieb darf niemals blockiert werden */ }
@@ -379,6 +409,21 @@
             return ref;
         },
         save: function () { writeSettings(window.PTD.settings); },
+        presets: PRESETS,
+        /* Sendet ueber die bereits bestehende Wings-Verbindung. Es wird keine
+           zweite Verbindung geoeffnet und nichts am Protokoll veraendert. */
+        send: function (event, args) {
+            var s = store.socket;
+            if (!s || s.readyState !== 1) return false;
+            try {
+                s.send(JSON.stringify({ event: event, args: args || [] }));
+                return true;
+            } catch (e) { return false; }
+        },
+        command: function (cmd) {
+            if (!cmd) return false;
+            return window.PTD.send('send command', [String(cmd)]);
+        },
         reset: function () {
             window.PTD.settings = deepMerge(DEFAULTS, {});
             writeSettings(window.PTD.settings);

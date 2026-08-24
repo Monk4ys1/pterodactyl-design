@@ -1,37 +1,51 @@
 /* =========================================================================
    Nebula · 10-base.css
-   Grundlagen: Body, Hintergrund-Canvas, Scrollbars, Fokus, Typografie und
-   die Neuzuordnung der Tailwind-Farbklassen, die Pterodactyl im gesamten
-   Frontend benutzt.
+   Zeichenflaeche, Typografie, Scrollbalken und die Neuzuordnung der
+   Tailwind-Farbklassen, die Pterodactyl im gesamten Frontend verwendet.
    ========================================================================= */
 
-/* Die Grundfarbe liegt bewusst auf <html>: von dort wird sie auf die
-   Zeichenflaeche des Viewports uebertragen. Der <body> bleibt durchsichtig,
-   damit die Verlaufsebene (body::before, z-index: -2) darueber sichtbar wird –
-   ein opaker Body-Hintergrund wuerde sie verdecken. */
+/* Die Grundfarbe liegt auf <html> und wird von dort auf die Zeichenflaeche
+   des Viewports uebertragen. Der <body> bleibt durchsichtig, damit die
+   Hintergrundebene (body::before) darueber sichtbar bleibt. */
 html {
     background-color: var(--ptd-bg) !important;
+    /* Sicherheitsnetz gegen seitliches Scrollen. "clip" statt "hidden", weil
+       hidden auf <html> einen Scrollcontainer erzeugen und position: sticky
+       im Inhalt aushebeln wuerde. */
+    overflow-x: clip;
     color: var(--ptd-text);
     font-family: var(--ptd-font);
+    font-size: 100%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    font-optical-sizing: auto;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "cv05" 1, "cv11" 1, "ss01" 1;
 }
 
 body {
     background-color: transparent !important;
     color: var(--ptd-text);
     font-family: var(--ptd-font);
+    font-size: var(--ptd-fs-body);
+    line-height: var(--ptd-lh-body);
+    letter-spacing: var(--ptd-tr-body);
     min-height: 100vh;
     position: relative;
-    letter-spacing: -0.005em;
+    margin: 0;
 }
 
-/* Pterodactyl setzt am <body> eine Farbklasse (bg-neutral-800). Die wuerde die
-   Verlaufsebene wieder zudecken und wird deshalb hier neutralisiert. */
+/* Pterodactyl setzt am <body> eine Farbklasse (bg-neutral-800), die die
+   Hintergrundebene zudecken wuerde. */
 body[class*="bg-"] { background-color: transparent !important; }
 
-/* --- Hintergrund-Ebene ------------------------------------------------- */
+/* =========================================================================
+   Hintergrundebene
+   Ein grosser, weicher Akzentschein oben links, ein kuehler Gegenpol rechts,
+   darueber ein sehr feines Raster und Filmkorn gegen Banding.
+   ========================================================================= */
+
 body::before {
     content: "";
     position: fixed;
@@ -40,153 +54,199 @@ body::before {
     pointer-events: none;
     opacity: var(--ptd-canvas-opacity);
     background:
-        radial-gradient(120% 85% at 12% -10%, var(--ptd-canvas-1) 0%, transparent 55%),
-        radial-gradient(100% 70% at 92% 4%, var(--ptd-canvas-2) 0%, transparent 52%),
-        radial-gradient(90% 80% at 50% 115%, color-mix(in srgb, var(--ptd-accent) 14%, transparent) 0%, transparent 60%);
-    transition: opacity .4s ease;
+        radial-gradient(90% 70% at 8% -12%, var(--ptd-canvas-1) 0%, transparent 58%),
+        radial-gradient(70% 55% at 98% 2%, var(--ptd-canvas-2) 0%, transparent 55%),
+        linear-gradient(180deg, var(--ptd-bg-2) 0%, var(--ptd-bg) 42%);
+    transition: opacity var(--ptd-t-slow) var(--ptd-ease);
 }
 
-/* Feines Rauschen gegen Banding in den Verlaeufen */
 body::after {
     content: "";
     position: fixed;
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    opacity: .028;
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-image:
+        linear-gradient(to right, var(--ptd-grid) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--ptd-grid) 1px, transparent 1px);
+    background-size: 56px 56px;
+    -webkit-mask-image: radial-gradient(120% 90% at 20% 0%, #000 0%, transparent 72%);
+    mask-image: radial-gradient(120% 90% at 20% 0%, #000 0%, transparent 72%);
+    opacity: .5;
 }
 
-html[data-ptd-bg="plain"] body::before { opacity: 0; }
+html[data-ptd-bg="plain"] body::before { background: linear-gradient(180deg, var(--ptd-bg-2), var(--ptd-bg)); }
 html[data-ptd-bg="plain"] body::after  { opacity: 0; }
 
-/* Benutzerdefiniertes Hintergrundbild (--ptd-bg-image wird per JS gesetzt) */
 html[data-ptd-bg="image"] body::before {
     background-image: var(--ptd-bg-image);
     background-size: cover;
     background-position: center;
+    background-attachment: fixed;
     opacity: 1;
 }
 html[data-ptd-bg="image"] body::after {
-    background: linear-gradient(180deg,
-        color-mix(in srgb, var(--ptd-bg) 72%, transparent),
-        color-mix(in srgb, var(--ptd-bg) 92%, transparent));
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--ptd-bg) 78%, transparent),
+            color-mix(in srgb, var(--ptd-bg) 94%, transparent));
+    -webkit-mask-image: none;
+    mask-image: none;
     opacity: 1;
-    mix-blend-mode: normal;
 }
 
-/* --- Scrollbars --------------------------------------------------------- */
-* {
-    scrollbar-width: thin;
-    scrollbar-color: var(--ptd-surface-3) transparent;
-}
-::-webkit-scrollbar { width: 10px; height: 10px; }
+/* =========================================================================
+   Scrollbalken
+   ========================================================================= */
+
+* { scrollbar-width: thin; scrollbar-color: var(--ptd-veil-3) transparent; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-    background: var(--ptd-surface-3);
+    background: var(--ptd-veil-3);
     border-radius: var(--ptd-r-pill);
-    border: 2px solid transparent;
+    border: 3px solid transparent;
     background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--ptd-accent-line); background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--ptd-veil-4); background-clip: content-box; }
 ::-webkit-scrollbar-corner { background: transparent; }
 
-/* --- Auswahl & Fokus ---------------------------------------------------- */
+/* =========================================================================
+   Auswahl, Fokus, Grundelemente
+   ========================================================================= */
+
 ::selection {
-    background: color-mix(in srgb, var(--ptd-accent) 38%, transparent);
+    background: color-mix(in srgb, var(--ptd-accent) 34%, transparent);
     color: var(--ptd-text);
 }
 
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
     outline: 2px solid var(--ptd-accent);
     outline-offset: 2px;
-    border-radius: var(--ptd-r-sm);
+    border-radius: var(--ptd-r-xs);
 }
+
+hr { border: 0; border-top: 1px solid var(--ptd-line); margin: var(--ptd-gap) 0; }
 
 /* =========================================================================
-   Neuzuordnung der Tailwind-Palette von Pterodactyl
-   Das Panel nutzt diese Utility-Klassen flaechendeckend; ueber die
-   Ueberschreibung faerben wir das komplette UI ohne Rebuild um.
+   Typografie
+   Tracking und Zeilenhoehe sind groessenabhaengig gesetzt: grosse Schrift
+   enger und dichter, kleine Schrift weiter und luftiger.
    ========================================================================= */
 
-/* Flaechen */
-.bg-black                                  { background-color: var(--ptd-bg-alt) !important; }
-.bg-neutral-900, .bg-gray-900              { background-color: var(--ptd-surface) !important; }
-.bg-neutral-800, .bg-gray-800              { background-color: var(--ptd-bg) !important; }
-.bg-neutral-700, .bg-gray-700              { background-color: var(--ptd-surface-2) !important; }
-.bg-neutral-600, .bg-gray-600              { background-color: var(--ptd-surface-3) !important; }
-.bg-neutral-500, .bg-gray-500              { background-color: var(--ptd-surface-3) !important; }
-.bg-neutral-400, .bg-gray-400              { background-color: color-mix(in srgb, var(--ptd-surface-3) 70%, var(--ptd-line-strong)) !important; }
-
-.hover\:bg-neutral-800:hover, .hover\:bg-gray-800:hover { background-color: var(--ptd-surface-2) !important; }
-.hover\:bg-neutral-700:hover, .hover\:bg-gray-700:hover { background-color: var(--ptd-surface-3) !important; }
-.hover\:bg-neutral-600:hover, .hover\:bg-gray-600:hover {
-    background-color: color-mix(in srgb, var(--ptd-surface-3) 80%, var(--ptd-accent)) !important;
+h1, .text-3xl, .text-4xl {
+    font-size: var(--ptd-fs-display) !important;
+    line-height: var(--ptd-lh-display);
+    letter-spacing: var(--ptd-tr-display);
+    font-weight: 680;
+    color: var(--ptd-text);
+}
+h2, .text-2xl {
+    font-size: var(--ptd-fs-h1) !important;
+    line-height: var(--ptd-lh-h1);
+    letter-spacing: var(--ptd-tr-h1);
+    font-weight: 660;
+}
+h3, .text-xl {
+    font-size: var(--ptd-fs-h2) !important;
+    line-height: var(--ptd-lh-h2);
+    letter-spacing: var(--ptd-tr-h2);
+    font-weight: 640;
+}
+h4, h5, h6 {
+    font-size: var(--ptd-fs-h3) !important;
+    line-height: var(--ptd-lh-h3);
+    letter-spacing: var(--ptd-tr-h3);
+    font-weight: 620;
 }
 
-/* Text */
-.text-neutral-50,  .text-gray-50           { color: var(--ptd-text) !important; }
-.text-neutral-100, .text-gray-100          { color: var(--ptd-text) !important; }
-.text-neutral-200, .text-gray-200          { color: var(--ptd-text-soft) !important; }
-.text-neutral-300, .text-gray-300          { color: var(--ptd-text-soft) !important; }
-.text-neutral-400, .text-gray-400          { color: var(--ptd-muted) !important; }
-.text-neutral-500, .text-gray-500          { color: var(--ptd-muted) !important; }
-.text-neutral-600, .text-gray-600          { color: var(--ptd-faint) !important; }
-.text-neutral-700, .text-gray-700          { color: var(--ptd-faint) !important; }
-.text-white                                { color: var(--ptd-text) !important; }
+.text-sm  { font-size: var(--ptd-fs-sm) !important;  letter-spacing: var(--ptd-tr-sm); }
+.text-xs  { font-size: var(--ptd-fs-xs) !important;  letter-spacing: var(--ptd-tr-xs); }
 
-/* Rahmen */
+label, .ptd-label {
+    color: var(--ptd-text-2);
+    font-size: var(--ptd-fs-xs);
+    font-weight: 560;
+    letter-spacing: var(--ptd-tr-xs);
+}
+
+code, pre, kbd, samp, .font-mono {
+    font-family: var(--ptd-mono);
+    font-variant-ligatures: none;
+    font-size: .82em;
+}
+
+a { transition: color var(--ptd-t-fast) var(--ptd-ease); }
+
+/* =========================================================================
+   Tailwind-Palette von Pterodactyl neu belegen
+   Damit faerbt sich auch alles um, was der DOM-Tagger nicht kennt.
+   ========================================================================= */
+
+.bg-black                        { background-color: var(--ptd-bg-2) !important; }
+.bg-neutral-900, .bg-gray-900    { background-color: var(--ptd-veil-2) !important; }
+.bg-neutral-800, .bg-gray-800    { background-color: transparent !important; }
+.bg-neutral-700, .bg-gray-700    { background-color: var(--ptd-veil) !important; }
+.bg-neutral-600, .bg-gray-600    { background-color: var(--ptd-veil-3) !important; }
+.bg-neutral-500, .bg-gray-500    { background-color: var(--ptd-veil-3) !important; }
+.bg-neutral-400, .bg-gray-400    { background-color: var(--ptd-veil-4) !important; }
+
+.hover\:bg-neutral-800:hover, .hover\:bg-gray-800:hover { background-color: var(--ptd-veil) !important; }
+.hover\:bg-neutral-700:hover, .hover\:bg-gray-700:hover { background-color: var(--ptd-veil-2) !important; }
+.hover\:bg-neutral-600:hover, .hover\:bg-gray-600:hover { background-color: var(--ptd-veil-4) !important; }
+
+.text-neutral-50,  .text-gray-50,
+.text-neutral-100, .text-gray-100 { color: var(--ptd-text) !important; }
+.text-neutral-200, .text-gray-200,
+.text-neutral-300, .text-gray-300 { color: var(--ptd-text-2) !important; }
+.text-neutral-400, .text-gray-400,
+.text-neutral-500, .text-gray-500 { color: var(--ptd-muted) !important; }
+.text-neutral-600, .text-gray-600,
+.text-neutral-700, .text-gray-700 { color: var(--ptd-faint) !important; }
+.text-white                       { color: var(--ptd-text) !important; }
+
 .border-neutral-500, .border-gray-500,
 .border-neutral-600, .border-gray-600,
 .border-neutral-700, .border-gray-700,
 .border-neutral-800, .border-gray-800,
-.border-neutral-900, .border-gray-900      { border-color: var(--ptd-line) !important; }
-.border-black                              { border-color: var(--ptd-line-strong) !important; }
+.border-neutral-900, .border-gray-900 { border-color: var(--ptd-line) !important; }
+.border-black                          { border-color: var(--ptd-line-2) !important; }
 
-/* Akzentfarbe des Panels (primary) */
 .bg-primary-400, .bg-primary-500,
-.bg-primary-600, .bg-primary-700           { background-color: var(--ptd-accent) !important; }
+.bg-primary-600, .bg-primary-700      { background-color: var(--ptd-accent) !important; }
 .hover\:bg-primary-500:hover,
 .hover\:bg-primary-600:hover,
-.hover\:bg-primary-700:hover               { background-color: color-mix(in srgb, var(--ptd-accent) 82%, #fff) !important; }
+.hover\:bg-primary-700:hover          { background-color: color-mix(in srgb, var(--ptd-accent) 84%, #fff) !important; }
 .text-primary-100, .text-primary-200,
 .text-primary-300, .text-primary-400,
-.text-primary-500, .text-primary-600       { color: var(--ptd-accent) !important; }
+.text-primary-500, .text-primary-600  { color: var(--ptd-accent) !important; }
 .border-primary-400, .border-primary-500,
-.border-primary-600                        { border-color: var(--ptd-accent) !important; }
+.border-primary-600                   { border-color: var(--ptd-accent) !important; }
 
-/* Semantische Farben harmonisieren */
-.bg-green-500, .bg-green-600   { background-color: var(--ptd-ok) !important; }
+.bg-green-500, .bg-green-600     { background-color: var(--ptd-ok) !important; }
 .text-green-400, .text-green-500 { color: var(--ptd-ok) !important; }
-.bg-red-500, .bg-red-600       { background-color: var(--ptd-danger) !important; }
-.text-red-400, .text-red-500   { color: var(--ptd-danger) !important; }
-.bg-yellow-500, .bg-yellow-600 { background-color: var(--ptd-warn) !important; }
+.bg-red-500, .bg-red-600         { background-color: var(--ptd-danger) !important; }
+.text-red-400, .text-red-500     { color: var(--ptd-danger) !important; }
+.bg-yellow-500, .bg-yellow-600   { background-color: var(--ptd-warn) !important; }
 .text-yellow-400, .text-yellow-500 { color: var(--ptd-warn) !important; }
-.bg-cyan-500, .bg-cyan-600     { background-color: var(--ptd-info) !important; }
-.text-cyan-400, .text-cyan-500 { color: var(--ptd-info) !important; }
+.bg-cyan-500, .bg-cyan-600       { background-color: var(--ptd-info) !important; }
+.text-cyan-400, .text-cyan-500   { color: var(--ptd-info) !important; }
 
-/* Schatten weicher und farbiger */
-.shadow, .shadow-md   { box-shadow: var(--ptd-shadow) !important; }
-.shadow-lg, .shadow-xl { box-shadow: var(--ptd-shadow-lg) !important; }
-.shadow-sm            { box-shadow: var(--ptd-shadow-sm) !important; }
+.shadow, .shadow-md    { box-shadow: var(--ptd-e2) !important; }
+.shadow-lg, .shadow-xl { box-shadow: var(--ptd-e3) !important; }
+.shadow-sm             { box-shadow: var(--ptd-e1) !important; }
 
-/* Radien global anheben */
-.rounded      { border-radius: var(--ptd-r-sm) !important; }
-.rounded-md   { border-radius: var(--ptd-r-sm) !important; }
-.rounded-lg   { border-radius: var(--ptd-r) !important; }
-.rounded-xl   { border-radius: var(--ptd-r-lg) !important; }
-.rounded-t    { border-radius: var(--ptd-r-sm) var(--ptd-r-sm) 0 0 !important; }
-.rounded-b    { border-radius: 0 0 var(--ptd-r-sm) var(--ptd-r-sm) !important; }
+.rounded    { border-radius: var(--ptd-r-sm) !important; }
+.rounded-md { border-radius: var(--ptd-r-sm) !important; }
+.rounded-lg { border-radius: var(--ptd-r) !important; }
+.rounded-xl { border-radius: var(--ptd-r-lg) !important; }
+.rounded-t  { border-radius: var(--ptd-r-sm) var(--ptd-r-sm) 0 0 !important; }
+.rounded-b  { border-radius: 0 0 var(--ptd-r-sm) var(--ptd-r-sm) !important; }
 
-/* --- Typografie --------------------------------------------------------- */
-h1, h2, h3, h4, h5, h6 { letter-spacing: -0.02em; font-weight: 650; }
+/* =========================================================================
+   Ladefortschritt bei Routenwechsel
+   ========================================================================= */
 
-code, pre, kbd, samp, .font-mono { font-family: var(--ptd-mono); font-variant-ligatures: none; }
-
-a { transition: color .16s ease; }
-
-/* --- Ladebalken bei Routenwechsel --------------------------------------- */
 #ptd-progress {
     position: fixed;
     top: 0; left: 0;
@@ -194,7 +254,7 @@ a { transition: color .16s ease; }
     width: 0;
     z-index: 2147483000;
     background: linear-gradient(90deg, var(--ptd-accent), var(--ptd-accent-2));
-    box-shadow: 0 0 12px var(--ptd-glow);
-    transition: width .25s ease, opacity .3s ease;
+    box-shadow: 0 0 14px var(--ptd-glow);
+    transition: width var(--ptd-t-base) var(--ptd-ease), opacity var(--ptd-t-base) linear;
     pointer-events: none;
 }

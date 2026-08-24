@@ -1,102 +1,148 @@
 /* =========================================================================
    Nebula · 30-components.css
-   Buttons, Formulare, Karten, Tabellen, Modals, Badges, Tooltips.
+   Karten, Buttons, Formulare, Tabellen, Modals, Plaketten, Sprechblasen.
+   Flaechen entstehen aus Verlauf + Rahmenlicht statt aus einer flachen
+   Fuellfarbe; dadurch bekommen sie Tiefe, ohne laut zu werden.
    ========================================================================= */
 
 /* =========================================================================
+   Karten
+   ========================================================================= */
+
+[data-ptd="card"] {
+    background: var(--ptd-card) !important;
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r) !important;
+    box-shadow: var(--ptd-e1), var(--ptd-rim) !important;
+    overflow: hidden;
+    transition: border-color var(--ptd-t-base) var(--ptd-ease),
+                box-shadow var(--ptd-t-base) var(--ptd-ease);
+}
+[data-ptd="card"]:hover { border-color: var(--ptd-line-2); }
+
+[data-ptd="card-header"] {
+    background: transparent !important;
+    border-bottom: 1px solid var(--ptd-line) !important;
+    font-size: var(--ptd-fs-h3);
+    font-weight: 620;
+    letter-spacing: var(--ptd-tr-h3);
+    color: var(--ptd-text) !important;
+    padding: .8rem 1rem !important;
+}
+
+.ptd-panel {
+    background: var(--ptd-card);
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r);
+    box-shadow: var(--ptd-e1), var(--ptd-rim);
+}
+
+/* =========================================================================
    Buttons
+   Rueckmeldung liegt auf dem Druck, nicht auf dem Loslassen.
    ========================================================================= */
 
 button, [role="button"], input[type="submit"], input[type="button"] {
     border-radius: var(--ptd-r-sm);
-    transition: background-color .18s ease, color .18s ease, box-shadow .2s ease,
-                transform .14s cubic-bezier(.22,.68,.36,1), opacity .18s ease;
+    font-family: inherit;
+    transition: background-color var(--ptd-t-fast) var(--ptd-ease),
+                color var(--ptd-t-fast) var(--ptd-ease),
+                box-shadow var(--ptd-t-fast) var(--ptd-ease),
+                border-color var(--ptd-t-fast) var(--ptd-ease),
+                transform var(--ptd-t-press) var(--ptd-ease),
+                opacity var(--ptd-t-fast) linear;
 }
-button:active:not(:disabled) { transform: translateY(1px) scale(.985); }
-button:disabled, [role="button"][aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+button:active:not(:disabled),
+[role="button"]:active { transform: scale(.972); }
+button:disabled, [role="button"][aria-disabled="true"] { opacity: .42; cursor: not-allowed; }
 
-/* Varianten werden vom Tagger anhand der berechneten Farbe erkannt */
 [data-ptd-btn] {
     position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .45rem;
+    font-size: var(--ptd-fs-sm) !important;
     font-weight: 600 !important;
-    letter-spacing: .01em;
+    letter-spacing: 0;
     text-transform: none !important;
     border: 1px solid transparent !important;
+    padding: .5rem .9rem;
     overflow: hidden;
 }
 
-[data-ptd-btn]::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(255,255,255,.16), transparent 62%);
-    opacity: .55;
-    pointer-events: none;
-}
-html[data-ptd-mode="light"] [data-ptd-btn]::after { opacity: .3; }
-
 [data-ptd-btn="primary"] {
-    background: linear-gradient(135deg, var(--ptd-accent), color-mix(in srgb, var(--ptd-accent-2) 55%, var(--ptd-accent))) !important;
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--ptd-accent) 92%, #fff),
+        var(--ptd-accent)) !important;
     color: var(--ptd-accent-ink) !important;
-    box-shadow: 0 6px 18px -8px var(--ptd-glow), inset 0 1px 0 rgba(255,255,255,.18) !important;
+    border-color: color-mix(in srgb, var(--ptd-accent) 70%, #000) !important;
+    box-shadow: 0 4px 14px -6px var(--ptd-glow), var(--ptd-rim-strong) !important;
 }
 [data-ptd-btn="primary"]:hover:not(:disabled) {
-    filter: brightness(1.1);
-    box-shadow: 0 10px 26px -8px var(--ptd-glow), inset 0 1px 0 rgba(255,255,255,.22) !important;
+    filter: brightness(1.08);
+    box-shadow: 0 8px 22px -8px var(--ptd-glow), var(--ptd-rim-strong) !important;
 }
 
 [data-ptd-btn="danger"] {
-    background: linear-gradient(135deg, var(--ptd-danger), color-mix(in srgb, var(--ptd-danger) 70%, #7f1d1d)) !important;
-    color: #fff !important;
-    box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--ptd-danger) 55%, transparent) !important;
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--ptd-danger) 92%, #fff),
+        var(--ptd-danger)) !important;
+    color: #26060d !important;
+    border-color: color-mix(in srgb, var(--ptd-danger) 70%, #000) !important;
+    box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--ptd-danger) 46%, transparent), var(--ptd-rim-strong) !important;
 }
-[data-ptd-btn="danger"]:hover:not(:disabled) { filter: brightness(1.1); }
+[data-ptd-btn="danger"]:hover:not(:disabled) { filter: brightness(1.08); }
 
 [data-ptd-btn="success"] {
-    background: linear-gradient(135deg, var(--ptd-ok), color-mix(in srgb, var(--ptd-ok) 70%, #065f46)) !important;
-    color: #04231a !important;
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--ptd-ok) 92%, #fff),
+        var(--ptd-ok)) !important;
+    color: #032018 !important;
+    border-color: color-mix(in srgb, var(--ptd-ok) 70%, #000) !important;
 }
 
 [data-ptd-btn="secondary"] {
-    background: var(--ptd-surface-3) !important;
+    background: var(--ptd-veil-2) !important;
     color: var(--ptd-text) !important;
     border-color: var(--ptd-line) !important;
-    box-shadow: var(--ptd-shadow-sm) !important;
+    box-shadow: var(--ptd-rim) !important;
 }
 [data-ptd-btn="secondary"]:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--ptd-surface-3) 80%, var(--ptd-accent)) !important;
-    border-color: var(--ptd-accent-line) !important;
+    background: var(--ptd-veil-3) !important;
+    border-color: var(--ptd-line-2) !important;
 }
 
-/* Power-Buttons der Serverkonsole */
-[data-ptd="power"] {
-    display: flex;
-    gap: .5rem;
-    flex-wrap: wrap;
-}
-[data-ptd="power"] button { min-width: 92px; }
+/* Steuerknoepfe der Konsole */
+[data-ptd="power"] { display: flex; gap: .45rem; flex-wrap: wrap; }
+[data-ptd="power"] button { min-width: 88px; }
 
 /* =========================================================================
    Formulare
    ========================================================================= */
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
 select, textarea {
-    background: var(--ptd-surface-3) !important;
+    background: var(--ptd-veil-2) !important;
     color: var(--ptd-text) !important;
     border: 1px solid var(--ptd-line) !important;
     border-radius: var(--ptd-r-sm) !important;
-    box-shadow: none !important;
-    transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+    box-shadow: var(--ptd-rim) !important;
+    font-family: inherit;
+    font-size: var(--ptd-fs-sm);
+    padding: .5rem .7rem;
+    transition: border-color var(--ptd-t-fast) var(--ptd-ease),
+                box-shadow var(--ptd-t-fast) var(--ptd-ease),
+                background-color var(--ptd-t-fast) var(--ptd-ease);
 }
 input::placeholder, textarea::placeholder { color: var(--ptd-faint) !important; }
 
 input:not([type="checkbox"]):not([type="radio"]):focus,
 select:focus, textarea:focus {
     border-color: var(--ptd-accent) !important;
-    box-shadow: var(--ptd-ring) !important;
+    box-shadow: var(--ptd-ring), var(--ptd-rim) !important;
     outline: none !important;
-    background: var(--ptd-surface-2) !important;
+    background: var(--ptd-veil-3) !important;
 }
 
 input[type="checkbox"], input[type="radio"] {
@@ -105,48 +151,13 @@ input[type="checkbox"], input[type="radio"] {
     cursor: pointer;
 }
 
-label { color: var(--ptd-text-soft); font-weight: 550; letter-spacing: .01em; }
-
-/* Autofill entfaerben */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
     -webkit-text-fill-color: var(--ptd-text);
-    -webkit-box-shadow: 0 0 0 1000px var(--ptd-surface-3) inset;
+    -webkit-box-shadow: 0 0 0 1000px var(--ptd-surface-2) inset;
     caret-color: var(--ptd-text);
 }
-
-/* =========================================================================
-   Karten / Boxen
-   ========================================================================= */
-
-[data-ptd="card"] {
-    background: var(--ptd-surface) !important;
-    border: 1px solid var(--ptd-line);
-    border-radius: var(--ptd-r) !important;
-    box-shadow: var(--ptd-shadow-sm) !important;
-    overflow: hidden;
-    transition: border-color .2s ease, box-shadow .2s ease;
-}
-[data-ptd="card"]:hover { border-color: var(--ptd-line-strong); }
-
-[data-ptd="card-header"] {
-    background: linear-gradient(180deg, var(--ptd-surface-2), var(--ptd-surface)) !important;
-    border-bottom: 1px solid var(--ptd-line) !important;
-    font-weight: 620;
-    letter-spacing: -0.01em;
-    color: var(--ptd-text) !important;
-}
-
-/* Statistik-Kacheln der Konsole */
-[data-ptd="stat"] {
-    position: relative;
-    background: var(--ptd-surface) !important;
-    border: 1px solid var(--ptd-line);
-    border-radius: var(--ptd-r) !important;
-    overflow: hidden;
-}
-[data-ptd="stat"]:hover { border-color: var(--ptd-accent-line); }
 
 /* =========================================================================
    Tabellen
@@ -155,95 +166,118 @@ input:-webkit-autofill:focus {
 table { border-collapse: separate !important; border-spacing: 0; width: 100%; }
 
 thead th {
-    background: var(--ptd-surface-2) !important;
-    color: var(--ptd-muted) !important;
-    font-size: .7rem !important;
-    font-weight: 650 !important;
-    letter-spacing: .09em;
+    background: transparent !important;
+    color: var(--ptd-faint) !important;
+    font-size: var(--ptd-fs-label) !important;
+    font-weight: 680 !important;
+    letter-spacing: var(--ptd-tr-label);
     text-transform: uppercase;
     border-bottom: 1px solid var(--ptd-line) !important;
-    padding: .7rem 1rem !important;
+    padding: .65rem 1rem !important;
+    text-align: left;
 }
 
-tbody tr { transition: background-color .16s ease; }
-tbody tr:hover { background: var(--ptd-surface-2) !important; }
+tbody tr { transition: background-color var(--ptd-t-fast) var(--ptd-ease); }
+tbody tr:hover { background: var(--ptd-veil-2) !important; }
 tbody td {
     border-bottom: 1px solid var(--ptd-line) !important;
     padding: .7rem 1rem !important;
-    color: var(--ptd-text-soft);
+    color: var(--ptd-text-2);
+    font-size: var(--ptd-fs-sm);
 }
 tbody tr:last-child td { border-bottom: 0 !important; }
 
 /* =========================================================================
    Modals
+   Material erscheint mit Unschaerfe und Massstab, nicht als reine Blende.
    ========================================================================= */
 
 #modal-portal > div,
 [data-ptd="modal-backdrop"] {
-    background: color-mix(in srgb, var(--ptd-bg) 72%, transparent) !important;
-    -webkit-backdrop-filter: blur(calc(var(--ptd-blur) * .5));
-    backdrop-filter: blur(calc(var(--ptd-blur) * .5));
-    animation: ptd-fade .2s ease both;
+    background: color-mix(in srgb, var(--ptd-bg) 68%, transparent) !important;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    animation: ptd-fade var(--ptd-t-base) var(--ptd-ease) both;
 }
 
 [data-ptd="modal"] {
     background: var(--ptd-surface) !important;
-    border: 1px solid var(--ptd-line-strong);
+    border: 1px solid var(--ptd-line-2);
     border-radius: var(--ptd-r-lg) !important;
-    box-shadow: var(--ptd-shadow-lg) !important;
-    animation: ptd-modal-in .26s cubic-bezier(.22,.68,.36,1) both;
+    box-shadow: var(--ptd-e4), var(--ptd-rim-strong) !important;
+    animation: ptd-surface-in var(--ptd-t-base) var(--ptd-ease) both;
 }
 
 @keyframes ptd-fade { from { opacity: 0 } to { opacity: 1 } }
-@keyframes ptd-modal-in {
-    from { opacity: 0; transform: translate3d(0, 16px, 0) scale(.97); }
-    to   { opacity: 1; transform: none; }
+@keyframes ptd-surface-in {
+    from { opacity: 0; transform: translate3d(0, 12px, 0) scale(.975); filter: blur(6px); }
+    to   { opacity: 1; transform: none; filter: blur(0); }
 }
 
 /* =========================================================================
-   Badges / Pills
+   Plaketten
    ========================================================================= */
 
 .ptd-badge {
     display: inline-flex;
     align-items: center;
-    gap: .4rem;
-    padding: .18rem .6rem;
+    gap: .38rem;
+    padding: .16rem .55rem;
     border-radius: var(--ptd-r-pill);
-    font-size: .7rem;
-    font-weight: 650;
+    font-size: var(--ptd-fs-label);
+    font-weight: 660;
     letter-spacing: .04em;
     text-transform: uppercase;
     border: 1px solid var(--ptd-line);
-    background: var(--ptd-surface-2);
+    background: var(--ptd-veil-2);
     color: var(--ptd-muted);
     white-space: nowrap;
+    box-shadow: var(--ptd-rim);
 }
-.ptd-badge--ok      { color: var(--ptd-ok);     border-color: color-mix(in srgb, var(--ptd-ok) 40%, transparent);     background: color-mix(in srgb, var(--ptd-ok) 12%, transparent); }
-.ptd-badge--warn    { color: var(--ptd-warn);   border-color: color-mix(in srgb, var(--ptd-warn) 40%, transparent);   background: color-mix(in srgb, var(--ptd-warn) 12%, transparent); }
-.ptd-badge--danger  { color: var(--ptd-danger); border-color: color-mix(in srgb, var(--ptd-danger) 40%, transparent); background: color-mix(in srgb, var(--ptd-danger) 12%, transparent); }
-.ptd-badge--info    { color: var(--ptd-info);   border-color: color-mix(in srgb, var(--ptd-info) 40%, transparent);   background: color-mix(in srgb, var(--ptd-info) 12%, transparent); }
+.ptd-badge--ok     { color: var(--ptd-ok);     border-color: color-mix(in srgb, var(--ptd-ok) 34%, transparent);     background: color-mix(in srgb, var(--ptd-ok) 11%, transparent); }
+.ptd-badge--warn   { color: var(--ptd-warn);   border-color: color-mix(in srgb, var(--ptd-warn) 34%, transparent);   background: color-mix(in srgb, var(--ptd-warn) 11%, transparent); }
+.ptd-badge--danger { color: var(--ptd-danger); border-color: color-mix(in srgb, var(--ptd-danger) 34%, transparent); background: color-mix(in srgb, var(--ptd-danger) 11%, transparent); }
+.ptd-badge--info   { color: var(--ptd-info);   border-color: color-mix(in srgb, var(--ptd-info) 34%, transparent);   background: color-mix(in srgb, var(--ptd-info) 11%, transparent); }
 
 .ptd-dot {
-    width: 7px; height: 7px;
+    width: 6px; height: 6px;
     border-radius: 50%;
     background: currentColor;
     box-shadow: 0 0 8px currentColor;
     flex: none;
 }
-.ptd-dot--pulse { animation: ptd-pulse 1.6s ease-in-out infinite; }
-@keyframes ptd-pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+.ptd-dot--pulse { animation: ptd-blink 1.4s ease-in-out infinite; }
+
+/* Chip mit einfarbigem Punkt – ersetzt reine Farbcodierung durch Text */
+.ptd-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .22rem .55rem;
+    font-size: var(--ptd-fs-xs);
+    font-family: var(--ptd-mono);
+    color: var(--ptd-text-2);
+    background: var(--ptd-veil-2);
+    border: 1px solid var(--ptd-line);
+    border-radius: var(--ptd-r-xs);
+    box-shadow: var(--ptd-rim);
+    cursor: default;
+    transition: color var(--ptd-t-fast) var(--ptd-ease), border-color var(--ptd-t-fast) var(--ptd-ease);
+}
+.ptd-chip[role="button"], .ptd-chip.is-clickable { cursor: pointer; }
+.ptd-chip[role="button"]:hover { color: var(--ptd-text); border-color: var(--ptd-accent-line); }
+.ptd-chip svg { width: 12px; height: 12px; opacity: .7; flex: none; }
 
 /* =========================================================================
-   Fortschrittsbalken
+   Messbalken
    ========================================================================= */
 
 .ptd-meter {
     position: relative;
-    height: 5px;
+    height: 4px;
     width: 100%;
     border-radius: var(--ptd-r-pill);
-    background: var(--ptd-surface-3);
+    background: var(--ptd-veil-3);
     overflow: hidden;
 }
 .ptd-meter > i {
@@ -251,14 +285,14 @@ tbody tr:last-child td { border-bottom: 0 !important; }
     height: 100%;
     width: 0;
     border-radius: inherit;
-    background: linear-gradient(90deg, var(--ptd-accent), var(--ptd-accent-2));
-    transition: width .45s cubic-bezier(.22,.68,.36,1), background .3s ease;
+    background: var(--ptd-accent);
+    transition: width var(--ptd-t-slow) var(--ptd-ease), background-color var(--ptd-t-base) linear;
 }
-.ptd-meter[data-level="warn"]   > i { background: linear-gradient(90deg, var(--ptd-warn), #f59e0b); }
-.ptd-meter[data-level="danger"] > i { background: linear-gradient(90deg, var(--ptd-danger), #dc2626); }
+.ptd-meter[data-level="warn"]   > i { background: var(--ptd-warn); }
+.ptd-meter[data-level="danger"] > i { background: var(--ptd-danger); }
 
 /* =========================================================================
-   Tooltips
+   Sprechblasen
    ========================================================================= */
 
 [data-ptd-tip] { position: relative; }
@@ -268,18 +302,18 @@ tbody tr:last-child td { border-bottom: 0 !important; }
     bottom: calc(100% + 8px);
     left: 50%;
     translate: -50% 0;
-    padding: .3rem .55rem;
-    font-size: .72rem;
+    padding: .28rem .5rem;
+    font-size: var(--ptd-fs-xs);
     font-weight: 550;
     white-space: nowrap;
     color: var(--ptd-text);
-    background: var(--ptd-surface-3);
-    border: 1px solid var(--ptd-line-strong);
-    border-radius: var(--ptd-r-sm);
-    box-shadow: var(--ptd-shadow);
+    background: var(--ptd-surface-2);
+    border: 1px solid var(--ptd-line-2);
+    border-radius: var(--ptd-r-xs);
+    box-shadow: var(--ptd-e2);
     opacity: 0;
     pointer-events: none;
-    transition: opacity .15s ease, translate .15s ease;
+    transition: opacity var(--ptd-t-fast) var(--ptd-ease), translate var(--ptd-t-fast) var(--ptd-ease);
     z-index: 1000;
 }
 [data-ptd-tip]:hover::after { opacity: 1; translate: -50% -2px; }
@@ -290,21 +324,18 @@ tbody tr:last-child td { border-bottom: 0 !important; }
 
 [data-ptd="file-row"] {
     border-radius: var(--ptd-r-sm);
-    transition: background-color .15s ease, transform .15s ease;
+    transition: background-color var(--ptd-t-fast) var(--ptd-ease), transform var(--ptd-t-fast) var(--ptd-ease);
 }
-[data-ptd="file-row"]:hover {
-    background: var(--ptd-surface-2) !important;
-    transform: translateX(2px);
-}
+[data-ptd="file-row"]:hover { background: var(--ptd-veil-2) !important; transform: translateX(2px); }
 
 /* =========================================================================
-   Spinner
+   Ladeanzeige
    ========================================================================= */
 
 .ptd-spin {
-    width: 16px; height: 16px;
+    width: 15px; height: 15px;
     border-radius: 50%;
-    border: 2px solid var(--ptd-line-strong);
+    border: 2px solid var(--ptd-line-2);
     border-top-color: var(--ptd-accent);
     animation: ptd-rotate .7s linear infinite;
     flex: none;
@@ -312,28 +343,46 @@ tbody tr:last-child td { border-bottom: 0 !important; }
 @keyframes ptd-rotate { to { transform: rotate(360deg) } }
 
 /* =========================================================================
-   Codeblöcke
+   Code
    ========================================================================= */
 
 pre, code:not(.ptd-kbd) {
-    background: var(--ptd-bg-alt) !important;
+    background: var(--ptd-veil-2) !important;
     border: 1px solid var(--ptd-line);
-    border-radius: var(--ptd-r-sm);
-    color: var(--ptd-text-soft);
+    border-radius: var(--ptd-r-xs);
+    color: var(--ptd-text-2);
 }
 
 .ptd-kbd {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 1.5rem;
-    padding: .1rem .38rem;
+    min-width: 1.4rem;
+    height: 1.15rem;
+    padding: 0 .32rem;
     font-family: var(--ptd-mono);
-    font-size: .68rem;
-    font-weight: 600;
-    color: var(--ptd-text-soft);
-    background: var(--ptd-surface-3);
-    border: 1px solid var(--ptd-line-strong);
+    font-size: .64rem;
+    font-weight: 620;
+    color: var(--ptd-text-2);
+    background: var(--ptd-veil-3);
+    border: 1px solid var(--ptd-line-2);
     border-bottom-width: 2px;
     border-radius: 5px;
 }
+
+/* =========================================================================
+   Leerzustand
+   ========================================================================= */
+
+.ptd-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .5rem;
+    padding: 2.5rem 1rem;
+    text-align: center;
+    color: var(--ptd-faint);
+}
+.ptd-empty-state svg { width: 26px; height: 26px; opacity: .5; }
+.ptd-empty-state b { color: var(--ptd-text-2); font-weight: 600; font-size: var(--ptd-fs-sm); }
+.ptd-empty-state span { font-size: var(--ptd-fs-xs); max-width: 34ch; }

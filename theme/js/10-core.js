@@ -24,7 +24,14 @@
                 if (k === 'class') node.className = v;
                 else if (k === 'html') node.innerHTML = v;
                 else if (k === 'text') node.textContent = v;
-                else if (k === 'style' && typeof v === 'object') Object.assign(node.style, v);
+                else if (k === 'style' && typeof v === 'object') {
+                    /* Object.assign kann keine Custom Properties setzen –
+                       dafuer braucht es setProperty. */
+                    Object.keys(v).forEach(function (prop) {
+                        if (prop.slice(0, 2) === '--') node.style.setProperty(prop, v[prop]);
+                        else node.style[prop] = v[prop];
+                    });
+                }
                 else if (k.slice(0, 2) === 'on' && typeof v === 'function') node.addEventListener(k.slice(2), v);
                 else node.setAttribute(k, v === true ? '' : v);
             });
@@ -106,7 +113,24 @@
         globe:    '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z"/>',
         filter:   '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
         bell:     '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
-        wand:     '<path d="m15 4 5 5M3 21l9.5-9.5M14.5 3.5 20.5 9.5M18 2l1 3 3 1-3 1-1 3-1-3-3-1 3-1Z"/>'
+        wand:     '<path d="m15 4 5 5M3 21l9.5-9.5M14.5 3.5 20.5 9.5M18 2l1 3 3 1-3 1-1 3-1-3-3-1 3-1Z"/>',
+        pin:      '<path d="M12 17v5"/><path d="M9 10.8V4h6v6.8l2.3 3.4a1 1 0 0 1-.83 1.56H7.53a1 1 0 0 1-.83-1.56Z"/>',
+        menu:     '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
+        panelLeft:'<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>',
+        chevL:    '<polyline points="15 18 9 12 15 6"/>',
+        chevR:    '<polyline points="9 18 15 12 9 6"/>',
+        plus:     '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+        zap:      '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+        gauge:    '<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M13.4 10.6 19 5"/><path d="M20.5 16a9 9 0 1 0-17 0"/>',
+        eye:      '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+        layers:   '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+        grid:     '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+        pip:      '<rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="8" height="6" rx="1"/>',
+        sparkles: '<path d="M12 2.5c.35 3.4 1.6 4.65 5 5-3.4.35-4.65 1.6-5 5-.35-3.4-1.6-4.65-5-5 3.4-.35 4.65-1.6 5-5Z"/>' +
+                  '<path d="M18.5 14c.2 1.9.9 2.6 2.8 2.8-1.9.2-2.6.9-2.8 2.8-.2-1.9-.9-2.6-2.8-2.8 1.9-.2 2.6-.9 2.8-2.8Z"/>',
+        logOut:   '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+        table:    '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/>',
+        mark:     '<path d="M3 7.5 12 2l9 5.5v9L12 22l-9-5.5Z"/><path d="M12 22V12"/><path d="m3 7.5 9 4.5 9-4.5"/>'
     };
 
     function icon(name, size) {
@@ -143,6 +167,44 @@
         return out.slice(0, 3).join(' ');
     }
 
+    /* Zwei Initialen aus einem Servernamen – dient als Bildmarke. */
+    function initials(name) {
+        var parts = String(name || '?').trim().split(/[\s_\-.]+/).filter(Boolean);
+        if (!parts.length) return '?';
+        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+
+    /* Stabile Farbe aus einer Zeichenkette – gleicher Server, gleiche Farbe. */
+    var TAG_HUES = [265, 190, 42, 330, 155, 210, 15, 290];
+    function autoColor(key) {
+        var h = 0, i;
+        for (i = 0; i < String(key).length; i++) h = (h * 31 + String(key).charCodeAt(i)) >>> 0;
+        return 'hsl(' + TAG_HUES[h % TAG_HUES.length] + ' 62% 62%)';
+    }
+
+    function toCsv(rows) {
+        return rows.map(function (r) {
+            return r.map(function (c) {
+                var v = String(c === null || c === undefined ? '' : c);
+                return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+            }).join(';');
+        }).join('\n');
+    }
+
+    function download(name, text, mime) {
+        try {
+            var blob = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            var a = el('a', { href: url, download: name });
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+            return true;
+        } catch (e) { return false; }
+    }
+
     function clockTime(t) {
         var d = new Date(t);
         function p(n) { return (n < 10 ? '0' : '') + n; }
@@ -168,15 +230,28 @@
 
     /* Container, in dem der Seiteninhalt gerendert wird – bewusst ueber
        Ankerelemente statt ueber feste Kindpositionen bestimmt. */
+    function isOurs(node) {
+        return !!node && ((node.id && node.id.indexOf('ptd-') === 0) || node.hasAttribute('data-ptd-own'));
+    }
+
+    function nextForeign(node) {
+        var n = node && node.nextElementSibling;
+        while (n && isOurs(n)) n = n.nextElementSibling;
+        return n;
+    }
+
     function contentRoot() {
         var app = qs('#app');
         if (!app) return document.body;
         var sub = qs('[data-ptd="subnav"]');
         if (sub && sub.parentElement && sub.parentElement !== app) return sub.parentElement;
         var nav = qs('[data-ptd="nav"]') || qs('#navigation');
-        if (nav && nav.nextElementSibling) return nav.nextElementSibling;
+        var after = nextForeign(nav);
+        if (after) return after;
         if (nav && nav.parentElement && nav.parentElement !== app) return nav.parentElement;
-        return app.lastElementChild || app;
+        var last = app.lastElementChild;
+        while (last && isOurs(last)) last = last.previousElementSibling;
+        return last || app;
     }
 
     var route = {
@@ -371,8 +446,9 @@
     Object.assign(PTD, {
         qs: qs, qsa: qsa, el: el, on: on, ready: ready, debounce: debounce, escapeHtml: escapeHtml,
         icon: icon, ICON: ICON,
-        fmt: { bytes: bytes, pct: pct, duration: duration, clockTime: clockTime },
-        route: route, refreshRoute: refreshRoute, contentRoot: contentRoot,
+        fmt: { bytes: bytes, pct: pct, duration: duration, clockTime: clockTime, initials: initials },
+        autoColor: autoColor, toCsv: toCsv, download: download,
+        route: route, refreshRoute: refreshRoute, contentRoot: contentRoot, isOurs: isOurs,
         progress: progress, toast: toast, api: api, cookie: cookie, cache: cache,
         loadFonts: loadFonts
     });

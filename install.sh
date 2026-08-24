@@ -538,9 +538,11 @@ do_install() {
     rm -rf "$build_dir"
 
     printf '\n  %s%s ist aktiv.%s\n\n' "$C_OK$C_B" "$THEME_NAME" "$C_RESET"
-    printf '  %sStrg + K%s   Command-Palette (Server suchen, Aktionen)\n' "$C_B" "$C_RESET"
-    printf '  %sStrg + /%s   Tastenkuerzel-Uebersicht\n' "$C_B" "$C_RESET"
-    printf '  %sZahnrad%s    Unten rechts: Farben, Layout, Funktionen\n' "$C_B" "$C_RESET"
+    printf '  %sStrg + K%s          Befehlspalette – Server suchen, Aktionen ausloesen\n' "$C_B" "$C_RESET"
+    printf '  %sStrg + B%s          Seitenschiene ein- und ausklappen\n' "$C_B" "$C_RESET"
+    printf '  %sStrg + Umschalt+D%s Mini-Konsole (bleibt beim Reiterwechsel offen)\n' "$C_B" "$C_RESET"
+    printf '  %sStrg + /%s          Alle Tastenkuerzel\n' "$C_B" "$C_RESET"
+    printf '  %sZahnrad%s           Unten rechts: Farben, Layout, Module, Warnregeln\n' "$C_B" "$C_RESET"
     printf '\n  %sBrowser-Cache leeren bzw. mit Strg+F5 neu laden.%s\n' "$C_DIM" "$C_RESET"
     printf '  %sEntfernen jederzeit mit:%s nebula uninstall\n\n' "$C_DIM" "$C_RESET"
 }

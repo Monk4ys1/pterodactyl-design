@@ -1,7 +1,7 @@
 /* =========================================================================
    Nebula · 40-palette.js
-   Command-Palette (Strg/Cmd + K): Server suchen, springen, Aktionen
-   ausloesen und das Design umschalten.
+   Befehlspalette (Strg/Cmd + K): Server finden, Seiten wechseln, Aktionen
+   ausloesen, Kurzbefehle senden und das Design umschalten.
    ========================================================================= */
 
 (function () {
@@ -10,18 +10,18 @@
     if (!PTD) return;
 
     var el = PTD.el, qs = PTD.qs, icon = PTD.icon;
-    var overlay = null, box = null, input = null, list = null;
-    var items = [], cursor = 0, servers = [], loaded = false;
+    var overlay = null, box = null, input = null, list = null, scope = null;
+    var items = [], cursor = 0;
 
     /* =====================================================================
-       SPA-taugliche Navigation
+       Navigation innerhalb der Anwendung
        ===================================================================== */
 
     function navigate(href) {
         if (!href) return;
         if (href.indexOf('/admin') === 0) { window.location.assign(href); return; }
 
-        var existing = qs('a[href="' + href.replace(/"/g, '\\"') + '"]');
+        var existing = qs('a[href="' + href.replace(/"/g, '\\"') + '"]:not(.ptd-rail-item)');
         if (existing) { existing.click(); return; }
 
         var before = PTD._lastScanAt || 0;
@@ -41,54 +41,35 @@
     }
 
     /* =====================================================================
-       Fuzzy-Suche
+       Bewertung und Hervorhebung
        ===================================================================== */
 
     function score(needle, hay) {
         if (!needle) return 1;
-        needle = needle.toLowerCase();
-        hay = hay.toLowerCase();
-        var idx = hay.indexOf(needle);
+        var n = needle.toLowerCase(), h = String(hay).toLowerCase();
+        var idx = h.indexOf(n);
         if (idx === 0) return 1000;
         if (idx > 0) return 700 - idx;
-        var n = 0, s = 0, last = -1;
-        for (var i = 0; i < hay.length && n < needle.length; i++) {
-            if (hay[i] === needle[n]) {
-                s += (last === i - 1) ? 6 : 2;
-                last = i; n++;
-            }
+        var k = 0, s = 0, last = -1;
+        for (var i = 0; i < h.length && k < n.length; i++) {
+            if (h[i] === n[k]) { s += (last === i - 1) ? 6 : 2; last = i; k++; }
         }
-        return n === needle.length ? s : -1;
+        return k === n.length ? s : -1;
+    }
+
+    function highlight(text, needle) {
+        var safe = PTD.escapeHtml(text);
+        if (!needle) return safe;
+        var i = text.toLowerCase().indexOf(needle.toLowerCase());
+        if (i < 0) return safe;
+        return PTD.escapeHtml(text.slice(0, i)) +
+            '<mark>' + PTD.escapeHtml(text.slice(i, i + needle.length)) + '</mark>' +
+            PTD.escapeHtml(text.slice(i + needle.length));
     }
 
     /* =====================================================================
-       Datenquellen
+       Eintraege
        ===================================================================== */
-
-    function loadServers() {
-        var cached = PTD.cache.get('servers', 60000);
-        if (cached) { servers = cached; loaded = true; render(); }
-        PTD.api('/api/client?per_page=100').then(function (res) {
-            if (!res || !res.data) return;
-            servers = res.data.map(function (row) {
-                var a = row.attributes || {};
-                return {
-                    id: a.identifier,
-                    name: a.name,
-                    node: a.node,
-                    ip: a.relationships && a.relationships.allocations && a.relationships.allocations.data[0]
-                        ? (a.relationships.allocations.data[0].attributes.ip_alias ||
-                           a.relationships.allocations.data[0].attributes.ip) + ':' +
-                          a.relationships.allocations.data[0].attributes.port
-                        : '',
-                    suspended: !!a.is_suspended
-                };
-            });
-            loaded = true;
-            PTD.cache.set('servers', servers);
-            render();
-        }).catch(function () { loaded = true; render(); });
-    }
 
     var SERVER_TABS = [
         { path: '', label: 'Konsole', ico: 'terminal' },
@@ -111,82 +92,100 @@
         { href: '/account/activity', label: 'Kontoaktivitaet', ico: 'activity' }
     ];
 
-    function power(signal) {
+    function power(signal, confirmText) {
         var id = PTD.route.server;
         if (!id) return;
+        if (confirmText && !window.confirm(confirmText)) return;
         PTD.api('/api/client/servers/' + id + '/power', { method: 'POST', body: { signal: signal } })
-            .then(function () {
-                PTD.toast({ type: 'ok', title: 'Befehl gesendet', msg: signal });
-            })
+            .then(function () { PTD.toast({ type: 'ok', title: 'Befehl gesendet', msg: signal }); })
             .catch(function (e) {
-                PTD.toast({ type: 'danger', title: 'Fehlgeschlagen', msg: 'Signal "' + signal + '" (' + (e.status || 'Netzwerkfehler') + ')' });
+                PTD.toast({ type: 'danger', title: 'Fehlgeschlagen', msg: 'HTTP ' + (e.status || '?') });
             });
     }
 
-    function buildItems(query) {
+    function servers() { return (PTD.rail && PTD.rail.servers()) || PTD.cache.get('servers', 120000) || []; }
+
+    function liveState(id) {
+        var l = PTD.overview && PTD.overview.live()[id];
+        if (l) return l.state;
+        var s = servers().filter(function (x) { return x.id === id; })[0];
+        return s ? s.state : 'offline';
+    }
+
+    function build(query) {
         var out = [];
         var onServer = PTD.route.page === 'server' && PTD.route.server;
+        var list = servers();
 
         if (onServer) {
             SERVER_TABS.forEach(function (t) {
                 out.push({
-                    group: 'Aktueller Server', ico: t.ico, title: t.label,
+                    group: 'Dieser Server', ico: t.ico, title: t.label,
                     sub: '/server/' + PTD.route.server + t.path,
                     run: function () { navigate('/server/' + PTD.route.server + t.path); }
                 });
             });
-            [['start', 'Server starten', 'play'],
-             ['restart', 'Server neu starten', 'restart'],
-             ['stop', 'Server stoppen', 'stop'],
-             ['kill', 'Prozess beenden (Kill)', 'power']].forEach(function (p) {
+            [['start', 'Server starten', 'play', null],
+             ['restart', 'Server neu starten', 'restart', null],
+             ['stop', 'Server stoppen', 'stop', null],
+             ['kill', 'Prozess beenden (Kill)', 'power', 'Prozess wirklich hart beenden?']
+            ].forEach(function (p) {
                 out.push({
                     group: 'Aktionen', ico: p[2], title: p[1], sub: 'Signal: ' + p[0],
-                    run: function () {
-                        if (p[0] === 'kill' && !window.confirm('Prozess wirklich hart beenden?')) return;
-                        power(p[0]);
-                    }
+                    run: function () { power(p[0], p[3]); }
+                });
+            });
+
+            var snips = (PTD.get('snippets') || {})[PTD.route.server] || [];
+            snips.forEach(function (cmd) {
+                out.push({
+                    group: 'Kurzbefehle', ico: 'zap', title: cmd, sub: 'An die Konsole senden',
+                    run: function () { if (PTD.console) PTD.console.run(cmd); }
                 });
             });
         }
 
-        servers.forEach(function (s) {
-            out.push({
-                group: 'Server', ico: 'server', title: s.name,
-                sub: (s.ip ? s.ip + '  ·  ' : '') + (s.node || '') + (s.suspended ? '  ·  gesperrt' : ''),
-                run: function () { navigate('/server/' + s.id); }
+        var favs = PTD.get('favorites') || [];
+        var recents = PTD.get('recents') || [];
+
+        if (!query && recents.length) {
+            recents.slice(0, 4).forEach(function (id) {
+                var s = list.filter(function (x) { return x.id === id; })[0];
+                if (!s || s.id === PTD.route.server) return;
+                out.push(serverItem(s, 'Zuletzt besucht'));
             });
+        }
+
+        list.forEach(function (s) {
+            out.push(serverItem(s, favs.indexOf(s.id) > -1 ? 'Angeheftet' : 'Server'));
         });
 
         GLOBAL_LINKS.forEach(function (l) {
             out.push({ group: 'Navigation', ico: l.ico, title: l.label, sub: l.href, run: function () { navigate(l.href); } });
         });
-
-        if (qs('a[href^="/admin"]')) {
+        if (qs('#navigation a[href^="/admin"]')) {
             out.push({ group: 'Navigation', ico: 'shield', title: 'Administration', sub: '/admin', run: function () { navigate('/admin'); } });
         }
 
-        ['nebula', 'ocean', 'forest', 'ember', 'rose', 'solar', 'midnight', 'mono'].forEach(function (p) {
+        PTD.presets.forEach(function (p) {
             out.push({
                 group: 'Design', ico: 'wand', title: 'Preset: ' + p.charAt(0).toUpperCase() + p.slice(1),
                 sub: 'Farbschema wechseln',
                 run: function () { PTD.settings.accent = ''; PTD.set('preset', p); PTD.toast({ type: 'ok', title: 'Preset aktiv', msg: p }); }
             });
         });
-
         out.push({
             group: 'Design', ico: PTD.get('mode') === 'light' ? 'moon' : 'sun',
-            title: PTD.get('mode') === 'light' ? 'Dunkelmodus' : 'Hellmodus',
-            sub: 'Farbschema umschalten',
+            title: PTD.get('mode') === 'light' ? 'Dunkelmodus' : 'Hellmodus', sub: 'Farbschema umschalten',
             run: function () { PTD.set('mode', PTD.get('mode') === 'light' ? 'dark' : 'light'); }
         });
         out.push({
-            group: 'Design', ico: 'settings', title: 'Nebula-Einstellungen', sub: 'Alle Optionen',
-            run: function () { close(); if (PTD.settingsPanel) PTD.settingsPanel.open(); }
+            group: 'Design', ico: 'panelLeft',
+            title: PTD.get('rail') === 'mini' ? 'Schiene ausklappen' : 'Schiene einklappen',
+            sub: 'Seitennavigation', run: function () { PTD.set('rail', PTD.get('rail') === 'mini' ? 'full' : 'mini'); }
         });
-        out.push({
-            group: 'Design', ico: 'keyboard', title: 'Tastenkuerzel anzeigen', sub: 'Strg + /',
-            run: function () { close(); if (PTD.shortcuts) PTD.shortcuts.show(); }
-        });
+        out.push({ group: 'Design', ico: 'settings', title: 'Nebula-Einstellungen', sub: 'Alle Optionen', run: function () { close(); PTD.settingsPanel.open(); } });
+        out.push({ group: 'Design', ico: 'keyboard', title: 'Tastenkuerzel', sub: 'Strg + /', run: function () { close(); if (PTD.shortcuts) PTD.shortcuts.show(); } });
 
         if (!query) return out;
 
@@ -198,6 +197,16 @@
           .map(function (x) { return x.it; });
     }
 
+    function serverItem(s, group) {
+        var tag = PTD.tagOf ? PTD.tagOf(s.id, s.name) : { color: PTD.autoColor(s.id), label: PTD.fmt.initials(s.name) };
+        return {
+            group: group, initials: tag.label, color: tag.color, state: liveState(s.id),
+            title: s.name,
+            sub: (s.address ? s.address + '  ·  ' : '') + (s.node || '') + (s.suspended ? '  ·  gesperrt' : ''),
+            run: function () { navigate('/server/' + s.id); }
+        };
+    }
+
     /* =====================================================================
        Darstellung
        ===================================================================== */
@@ -205,12 +214,19 @@
     function render() {
         if (!list) return;
         var q = (input.value || '').trim();
-        items = buildItems(q).slice(0, 60);
+        items = build(q).slice(0, 70);
         cursor = Math.min(cursor, Math.max(items.length - 1, 0));
         list.innerHTML = '';
 
+        var onServer = PTD.route.page === 'server' && PTD.route.server;
+        scope.style.display = onServer ? '' : 'none';
+        if (onServer) {
+            var s = servers().filter(function (x) { return x.id === PTD.route.server; })[0];
+            scope.textContent = s ? s.name : PTD.route.server;
+        }
+
         if (!items.length) {
-            list.appendChild(el('div', { class: 'ptd-p-empty', text: loaded ? 'Keine Treffer.' : 'Lade Server …' }));
+            list.appendChild(el('div', { class: 'ptd-p-empty', text: 'Keine Treffer.' }));
             return;
         }
 
@@ -220,17 +236,24 @@
                 lastGroup = it.group;
                 list.appendChild(el('div', { class: 'ptd-p-group', text: it.group }));
             }
+            var ico = el('span', { class: 'ptd-p-ico', style: it.color ? { background: 'color-mix(in srgb,' + it.color + ' 22%, transparent)', color: it.color } : null });
+            if (it.initials) ico.textContent = it.initials;
+            else ico.innerHTML = icon(it.ico, 14);
+
             var node = el('div', {
-                class: 'ptd-p-item', role: 'option',
-                'aria-selected': i === cursor ? 'true' : 'false',
-                'data-i': i
-            }, [
-                el('span', { class: 'ptd-p-ico', html: icon(it.ico, 14) }),
-                el('span', { class: 'ptd-p-txt' }, [
-                    el('div', { class: 'ptd-p-title', text: it.title }),
-                    it.sub ? el('div', { class: 'ptd-p-sub', text: it.sub }) : null
-                ])
-            ]);
+                class: 'ptd-p-item', role: 'option', 'data-i': i,
+                'data-state': it.state || null,
+                'aria-selected': i === cursor ? 'true' : 'false'
+            }, [ico]);
+
+            var txt = el('span', { class: 'ptd-p-txt' });
+            txt.appendChild(el('div', { class: 'ptd-p-title', html: highlight(it.title, q) }));
+            if (it.sub) txt.appendChild(el('div', { class: 'ptd-p-sub', text: it.sub }));
+            node.appendChild(txt);
+
+            if (it.state) node.appendChild(el('span', { class: 'ptd-p-state' }));
+            node.appendChild(el('span', { class: 'ptd-p-hint', html: '<b class="ptd-kbd">&crarr;</b>' }));
+
             node.addEventListener('mousemove', function () { select(i); });
             node.addEventListener('click', function () { run(i); });
             list.appendChild(node);
@@ -253,8 +276,7 @@
 
     function move(delta) {
         if (!items.length) return;
-        var next = (cursor + delta + items.length) % items.length;
-        select(next);
+        select((cursor + delta + items.length) % items.length);
         scrollToCursor();
     }
 
@@ -269,22 +291,23 @@
        Auf- und Zuklappen
        ===================================================================== */
 
-    function build() {
+    function buildUi() {
         input = el('input', {
-            type: 'text', placeholder: 'Server, Seite oder Aktion suchen …',
+            type: 'text', placeholder: 'Server, Seite oder Aktion …',
             spellcheck: 'false', autocomplete: 'off', 'aria-label': 'Suche'
         });
+        scope = el('span', { class: 'ptd-p-scope' });
         list = el('div', { class: 'ptd-p-list', role: 'listbox' });
 
         box = el('div', { id: 'ptd-palette' }, [
             el('div', { class: 'ptd-p-input' }, [
-                el('span', { html: icon('search', 17) }),
-                input
+                el('span', { html: icon('search', 16) }),
+                input, scope
             ]),
             list,
             el('div', { class: 'ptd-p-foot' }, [
                 el('span', { html: '<b class="ptd-kbd">&uarr;</b><b class="ptd-kbd">&darr;</b> Navigieren' }),
-                el('span', { html: '<b class="ptd-kbd">&crarr;</b> Auswaehlen' }),
+                el('span', { html: '<b class="ptd-kbd">&crarr;</b> Ausfuehren' }),
                 el('span', { html: '<b class="ptd-kbd">Esc</b> Schliessen' })
             ])
         ]);
@@ -306,20 +329,19 @@
 
     function open() {
         if (!PTD.get('modules.palette')) return;
-        if (!overlay) build();
+        if (!overlay) buildUi();
         overlay.classList.add('is-open');
         input.value = '';
         cursor = 0;
         render();
-        if (!loaded) loadServers();
+        if (!servers().length && PTD.rail) PTD.rail.reload();
         setTimeout(function () { input.focus(); }, 20);
     }
 
-    function close() {
-        if (overlay) overlay.classList.remove('is-open');
-    }
-
+    function close() { if (overlay) overlay.classList.remove('is-open'); }
     function isOpen() { return !!overlay && overlay.classList.contains('is-open'); }
+
+    PTD.bus.on('servers', function () { if (isOpen()) render(); });
 
     PTD.palette = { open: open, close: close, toggle: function () { isOpen() ? close() : open(); }, isOpen: isOpen, navigate: navigate };
     PTD.navigate = navigate;

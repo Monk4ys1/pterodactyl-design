@@ -1,22 +1,30 @@
 /* =========================================================================
    Nebula · 50-auth.css
-   Login, Registrierung, Passwort-Reset und 2FA-Checkpoint.
+   Anmeldung, Registrierung, Passwort-Reset und 2FA.
    ========================================================================= */
+
+html[data-ptd-page="auth"] #ptd-rail,
+html[data-ptd-page="auth"] #ptd-topbar,
+html[data-ptd-page="auth"] [data-ptd="footer"] { display: none !important; }
+html[data-ptd-page="auth"] body { padding-left: 0 !important; }
 
 html[data-ptd-page="auth"] body::before {
     opacity: 1;
     background:
-        radial-gradient(70% 60% at 18% -5%, color-mix(in srgb, var(--ptd-accent) 62%, transparent) 0%, transparent 62%),
-        radial-gradient(62% 58% at 86% 12%, color-mix(in srgb, var(--ptd-accent-2) 52%, transparent) 0%, transparent 60%),
-        radial-gradient(85% 62% at 50% 112%, color-mix(in srgb, var(--ptd-accent) 38%, transparent) 0%, transparent 64%);
-    animation: ptd-aurora 24s ease-in-out infinite alternate;
+        radial-gradient(58% 52% at 16% -8%, color-mix(in srgb, var(--ptd-accent) 55%, transparent) 0%, transparent 62%),
+        radial-gradient(52% 48% at 88% 8%, color-mix(in srgb, var(--ptd-accent-2) 44%, transparent) 0%, transparent 60%),
+        radial-gradient(75% 55% at 50% 112%, color-mix(in srgb, var(--ptd-accent) 30%, transparent) 0%, transparent 64%),
+        linear-gradient(180deg, var(--ptd-bg-2), var(--ptd-bg) 45%);
+    animation: ptd-aurora 30s ease-in-out infinite alternate;
 }
 
+/* Langsame, grossflaechige Bewegung wird bei reduzierter Bewegung angehalten */
 @keyframes ptd-aurora {
     0%   { transform: scale(1) translate3d(0, 0, 0); }
-    50%  { transform: scale(1.12) translate3d(-2%, 1.5%, 0); }
-    100% { transform: scale(1.04) translate3d(2%, -1%, 0); }
+    50%  { transform: scale(1.1) translate3d(-1.5%, 1%, 0); }
+    100% { transform: scale(1.03) translate3d(1.5%, -.8%, 0); }
 }
+html[data-ptd-motion="0"] body::before { animation: none !important; }
 
 html[data-ptd-page="auth"] #app {
     min-height: 100vh;
@@ -26,94 +34,94 @@ html[data-ptd-page="auth"] #app {
     padding: 1.5rem;
 }
 
-/* Der Login-Container wird vom Tagger markiert */
 [data-ptd="auth-card"] {
     position: relative;
     width: 100%;
-    max-width: 420px;
-    background: var(--ptd-surface-glass) !important;
-    -webkit-backdrop-filter: blur(calc(var(--ptd-blur) * 1.4)) saturate(180%);
-    backdrop-filter: blur(calc(var(--ptd-blur) * 1.4)) saturate(180%);
-    border: 1px solid var(--ptd-line-strong) !important;
+    max-width: 400px;
+    background: var(--ptd-glass) !important;
+    -webkit-backdrop-filter: blur(calc(var(--ptd-blur) * 1.5)) saturate(190%);
+    backdrop-filter: blur(calc(var(--ptd-blur) * 1.5)) saturate(190%);
+    border: 1px solid var(--ptd-line-2) !important;
     border-radius: var(--ptd-r-lg) !important;
-    box-shadow: var(--ptd-shadow-lg), 0 0 60px -30px var(--ptd-glow) !important;
-    padding: 2rem 1.75rem 1.75rem !important;
-    animation: ptd-auth-in .5s cubic-bezier(.22,.68,.36,1) both;
+    box-shadow: var(--ptd-e4), var(--ptd-rim-strong), 0 0 70px -34px var(--ptd-glow) !important;
+    padding: 1.9rem 1.65rem 1.5rem !important;
+    animation: ptd-surface-in var(--ptd-t-slow) var(--ptd-ease) both;
     overflow: hidden;
 }
 
 [data-ptd="auth-card"]::before {
     content: "";
     position: absolute;
-    top: 0; left: 12%; right: 12%;
+    top: 0; left: 14%; right: 14%;
     height: 1px;
     background: linear-gradient(90deg, transparent, var(--ptd-accent), var(--ptd-accent-2), transparent);
+    opacity: .8;
 }
 
-@keyframes ptd-auth-in {
-    from { opacity: 0; transform: translate3d(0, 18px, 0) scale(.98); }
-    to   { opacity: 1; transform: none; }
-}
-
-/* Markenkopf über dem Formular */
 #ptd-auth-brand {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: .55rem;
-    margin-bottom: 1.5rem;
+    gap: .5rem;
+    margin-bottom: 1.4rem;
     text-align: center;
 }
 #ptd-auth-brand .ptd-mark {
-    width: 52px; height: 52px;
+    width: 46px; height: 46px;
     display: grid;
     place-items: center;
-    border-radius: 16px;
-    background: linear-gradient(135deg, var(--ptd-accent), var(--ptd-accent-2));
-    box-shadow: 0 12px 30px -12px var(--ptd-glow);
+    border-radius: 14px;
+    background: linear-gradient(140deg, var(--ptd-accent), var(--ptd-accent-2));
+    box-shadow: 0 12px 28px -12px var(--ptd-glow), var(--ptd-rim-strong);
     color: var(--ptd-accent-ink);
 }
-#ptd-auth-brand .ptd-mark svg { width: 28px; height: 28px; }
+#ptd-auth-brand .ptd-mark svg { width: 24px; height: 24px; }
 #ptd-auth-brand h1 {
-    font-size: 1.3rem;
-    font-weight: 700;
-    letter-spacing: -.025em;
+    font-size: var(--ptd-fs-h1) !important;
+    line-height: var(--ptd-lh-h1);
+    letter-spacing: var(--ptd-tr-h1);
+    font-weight: 680;
     color: var(--ptd-text);
-    margin: 0;
+    margin: .15rem 0 0;
 }
 #ptd-auth-brand p {
-    font-size: .8rem;
+    font-size: var(--ptd-fs-sm);
     color: var(--ptd-muted);
     margin: 0;
 }
 
-html[data-ptd-page="auth"] [data-ptd="auth-card"] input {
-    height: 44px;
-    font-size: .9rem;
+/* Ueber durchscheinendem Material braucht Text mehr Gewicht und Kontrast */
+html[data-ptd-page="auth"] [data-ptd="auth-card"] label {
+    color: var(--ptd-text-2);
+    font-weight: 590;
+    letter-spacing: .008em;
 }
+html[data-ptd-page="auth"] [data-ptd="auth-card"] input { height: 42px; font-size: var(--ptd-fs-body); }
+html[data-ptd-page="auth"] [data-ptd-btn] { height: 42px; width: 100%; }
 
-html[data-ptd-page="auth"] [data-ptd-btn] { height: 44px; width: 100%; }
-
-/* Fußzeile der Login-Karte */
 #ptd-auth-foot {
-    margin-top: 1.25rem;
-    padding-top: 1rem;
+    margin-top: 1.15rem;
+    padding-top: .9rem;
     border-top: 1px solid var(--ptd-line);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: .75rem;
-    font-size: .72rem;
+    gap: .5rem;
+    font-size: var(--ptd-fs-xs);
     color: var(--ptd-faint);
 }
 #ptd-auth-foot button {
-    background: transparent;
-    border: 0;
-    color: var(--ptd-muted);
-    font-size: .72rem;
-    cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: .3rem;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--ptd-muted);
+    font-size: var(--ptd-fs-xs);
+    padding: .25rem .5rem;
+    border-radius: var(--ptd-r-xs);
+    cursor: pointer;
+    transition: color var(--ptd-t-fast) var(--ptd-ease), background-color var(--ptd-t-fast) var(--ptd-ease);
 }
-#ptd-auth-foot button:hover { color: var(--ptd-accent); }
+#ptd-auth-foot button:hover { color: var(--ptd-text); background: var(--ptd-veil-2); }
+#ptd-auth-foot svg { width: 13px; height: 13px; }

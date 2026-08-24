@@ -16,10 +16,11 @@
         {
             title: 'Allgemein',
             keys: [
-                { k: ['Strg', 'K'], d: 'Command-Palette oeffnen' },
+                { k: ['Strg', 'K'], d: 'Befehlspalette' },
                 { k: ['Strg', '/'], d: 'Diese Uebersicht' },
+                { k: ['Strg', 'B'], d: 'Schiene ein-/ausklappen' },
                 { k: ['Strg', 'Umschalt', 'E'], d: 'Nebula-Einstellungen' },
-                { k: ['Strg', 'Umschalt', 'L'], d: 'Hell / Dunkel umschalten' },
+                { k: ['Strg', 'Umschalt', 'L'], d: 'Hell / Dunkel' },
                 { k: ['Esc'], d: 'Overlay schliessen' }
             ]
         },
@@ -50,6 +51,8 @@
             title: 'Konsole',
             keys: [
                 { k: ['Strg', 'Umschalt', 'F'], d: 'Vollbild' },
+                { k: ['Strg', 'Umschalt', 'D'], d: 'Mini-Konsole' },
+                { k: ['Strg', 'Umschalt', 'Z'], d: 'Fokusmodus' },
                 { k: ['Alt', '1'], d: 'Erster Reiter' },
                 { k: ['Alt', '2 – 9'], d: 'Weitere Reiter' }
             ]
@@ -118,6 +121,13 @@
         if (PTD.palette && PTD.palette.isOpen()) { PTD.palette.close(); return true; }
         if (visible()) { hide(); return true; }
         if (PTD.settingsPanel && PTD.settingsPanel.isOpen()) { PTD.settingsPanel.close(); return true; }
+        if (PTD.tags) PTD.tags.close();
+        if (document.documentElement.getAttribute('data-ptd-railopen') === '1') {
+            PTD.rail.closeMobile(); return true;
+        }
+        if (document.documentElement.getAttribute('data-ptd-focus') === '1') {
+            PTD.rail.toggleFocus(); return true;
+        }
         if (document.documentElement.getAttribute('data-ptd-console') === 'full') {
             document.documentElement.removeAttribute('data-ptd-console');
             setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 60);
@@ -167,6 +177,22 @@
         if (mod && e.shiftKey && (e.key === 'L' || e.key === 'l')) {
             e.preventDefault();
             PTD.set('mode', PTD.get('mode') === 'light' ? 'dark' : 'light');
+            return;
+        }
+        if (mod && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) {
+            e.preventDefault();
+            PTD.set('rail', PTD.get('rail') === 'mini' ? 'full' : 'mini');
+            return;
+        }
+        if (mod && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+            if (PTD.route.page !== 'server') return;
+            e.preventDefault();
+            if (PTD.dock) PTD.dock.toggle();
+            return;
+        }
+        if (mod && e.shiftKey && (e.key === 'Z' || e.key === 'z')) {
+            e.preventDefault();
+            if (PTD.rail) PTD.rail.toggleFocus();
             return;
         }
         if (mod && e.shiftKey && (e.key === 'F' || e.key === 'f')) {

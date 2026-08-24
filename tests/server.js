@@ -93,10 +93,11 @@ wss.on('connection', (ws) => {
         if (!live) return;
         t++;
         rx += 4096 * t; tx += 2048 * t;
+        /* Realistische, begrenzte Lastkurve – kein unbegrenzter Anstieg. */
         send('stats', [JSON.stringify({
-            memory_bytes: (400 + Math.round(Math.sin(t / 3) * 80 + t * 3)) * 1048576,
+            memory_bytes: Math.round((760 + Math.sin(t / 9) * 190 + Math.sin(t / 2.3) * 45) * 1048576),
             memory_limit_bytes: 2147483648,
-            cpu_absolute: 20 + Math.round(Math.sin(t / 2) * 15 + t),
+            cpu_absolute: Math.max(2, Math.round(58 + Math.sin(t / 7) * 34 + Math.sin(t / 1.7) * 12)),
             disk_bytes: 1048576000 + t * 1000,
             network: { rx_bytes: rx, tx_bytes: tx },
             state: 'running',
@@ -105,7 +106,31 @@ wss.on('connection', (ws) => {
         send('console output', ['[INFO] tick ' + t + ' players online']);
     }, 110);
 
+    /* Kommandos, die das Theme ueber die bestehende Verbindung schickt,
+       werden zurueckgespiegelt – so laesst sich pruefen, dass sie wirklich
+       auf der Leitung landen. */
+    ws.on('message', (raw) => {
+        let msg;
+        try { msg = JSON.parse(raw.toString()); } catch (e) { return; }
+        if (msg && msg.event === 'send command') {
+            send('console output', ['[Nebula] ausgefuehrt: ' + (msg.args || [])[0]]);
+        }
+    });
+
     ws.on('close', () => clearInterval(iv));
 });
 
-srv.listen(8899, '127.0.0.1', () => console.log('mock panel on http://127.0.0.1:8899'));
+/* Port 0 = freier Port vom Betriebssystem. Die Nummer landet in tests/.port,
+   damit parallele oder haengengebliebene Laeufe sich nie in die Quere kommen. */
+srv.listen(Number(process.env.PORT || 0), '127.0.0.1', () => {
+    const port = srv.address().port;
+    fs.writeFileSync(path.join(ROOT, '.port'), String(port));
+    console.log('mock panel on http://127.0.0.1:' + port);
+});
+
+function shutdown() {
+    try { fs.unlinkSync(path.join(ROOT, '.port')); } catch (e) { /* egal */ }
+    process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
