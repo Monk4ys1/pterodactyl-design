@@ -19,10 +19,17 @@
 
     function all() { return PTD.get('tags') || {}; }
 
+    function safeColor(c) {
+        c = String(c || '');
+        if (/^#[0-9a-fA-F]{6}$/.test(c)) return c;
+        if (/^hsl\(\d{1,3} \d{1,3}% \d{1,3}%\)$/.test(c)) return c;
+        return '';
+    }
+
     function tagOf(id, name) {
         var t = all()[id];
         return {
-            color: (t && t.color) || PTD.autoColor(id),
+            color: safeColor(t && t.color) || PTD.autoColor(id),
             label: (t && t.label) || PTD.fmt.initials(name || id),
             custom: !!t
         };
@@ -30,6 +37,7 @@
 
     function setTag(id, color, label) {
         var tags = all();
+        color = safeColor(color);
         if (!color && !label) delete tags[id];
         else tags[id] = { color: color || undefined, label: (label || '').slice(0, 3).toUpperCase() || undefined };
         PTD.settings.tags = tags;

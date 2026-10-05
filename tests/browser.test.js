@@ -332,6 +332,33 @@ function check(name, cond, extra) {
     await page.screenshot({ path: path.join(SHOTS, '13-mobile.png') });
     await page.setViewportSize({ width: 1500, height: 940 });
 
+    /* ================= Fail-closed Eingaben ================= */
+    const guards = await page.evaluate(async () => {
+        window.PTD.set('bg', 'image');
+        window.PTD.set('bgImage', 'https://evil.example/x");}body{background:url(https://evil.example)}');
+        window.PTD.set('accent', 'red);url(https://evil.example)');
+        const bg = getComputedStyle(document.documentElement).getPropertyValue('--ptd-bg-image');
+        const accent = getComputedStyle(document.documentElement).getPropertyValue('--ptd-accent').trim();
+        let apiRejected = false;
+        let powerRejected = false;
+        try { await window.PTD.api('https://evil.example/'); } catch (e) { apiRejected = true; }
+        try { await window.PTD.power('../admin', 'start'); } catch (e) { powerRejected = true; }
+        window.PTD.set('bg', 'aurora');
+        window.PTD.set('bgImage', '');
+        window.PTD.set('accent', '');
+        return {
+            href: window.PTD.safeHref('//evil.example') === '' && window.PTD.safeHref('/server/abc') === '/server/abc',
+            id: window.PTD.safeServerId('../x') === '' && window.PTD.safeServerId('a1b2c3d4') === 'a1b2c3d4',
+            bg: bg.indexOf('url(') === -1,
+            accent: accent.charAt(0) === '#' && accent.indexOf('url') === -1,
+            apiRejected: apiRejected,
+            powerRejected: powerRejected
+        };
+    });
+    check('Offene Ziele werden verworfen', guards.href && guards.id);
+    check('CSS-Werte aus Einstellungen bleiben geschlossen', guards.bg && guards.accent, JSON.stringify({ bg: guards.bg, accent: guards.accent }));
+    check('API-Pfade bleiben same-origin', guards.apiRejected && guards.powerRejected);
+
     /* ================= Fehlerfreiheit ================= */
     const real = errors.filter((e) => !/favicon|Failed to load resource/i.test(e));
     check('Keine JavaScript-Fehler', real.length === 0, real.slice(0, 3).join(' | '));

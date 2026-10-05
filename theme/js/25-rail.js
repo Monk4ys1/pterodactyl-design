@@ -263,7 +263,7 @@
             parts.push(link('Server', '/'));
             var info = servers.filter(function (s) { return s.id === r.server; })[0];
             parts.push(el('span', { class: 'ptd-cr-sep', text: '/' }));
-            parts.push(link(info ? info.name : (r.server || 'Server'), '/server/' + r.server));
+            parts.push(link(info ? info.name : (r.server || 'Server'), '/server/' + PTD.safeServerId(r.server)));
             parts.push(el('span', { class: 'ptd-cr-sep', text: '/' }));
             parts.push(el('span', { class: 'ptd-cr-now', text: TAB_LABEL[r.sub || ''] || r.sub }));
         } else if (r.page === 'account') {
@@ -318,7 +318,12 @@
     function loadServers(force) {
         if (loading) return;
         var cached = PTD.cache.get('servers', force ? 0 : 45000);
-        if (cached) { servers = cached; paintServers(); paintCrumbs(); if (!force) return; }
+        if (cached && Array.isArray(cached)) {
+            servers = cached.filter(function (s) { return s && PTD.safeServerId(s.id); });
+            paintServers();
+            paintCrumbs();
+            if (!force) return;
+        }
         loading = true;
         PTD.api('/api/client?per_page=100').then(function (res) {
             loading = false;
@@ -334,7 +339,7 @@
                     if (!alloc && list.length) alloc = list[0].attributes;
                 } catch (e) { /* keine Allocation sichtbar */ }
                 return {
-                    id: a.identifier,
+                    id: PTD.safeServerId(a.identifier),
                     name: a.name,
                     node: a.node,
                     address: alloc ? ((alloc.ip_alias || alloc.ip) + ':' + alloc.port) : '',
@@ -343,6 +348,7 @@
                     state: a.is_suspended ? 'suspended' : 'offline'
                 };
             });
+            servers = servers.filter(function (s) { return s.id; });
             PTD.cache.set('servers', servers);
             paintServers();
             paintCrumbs();
@@ -358,13 +364,15 @@
     }
 
     function serverItem(s) {
-        var tag = tagOf(s.id, s.name);
+        var id = PTD.safeServerId(s.id);
+        if (!id) return el('span');
+        var tag = tagOf(id, s.name);
         var item = railItem({
-            href: '/server/' + s.id,
+            href: '/server/' + id,
             label: s.name,
             initials: tag.label,
             color: tag.color,
-            server: s.id,
+            server: id,
             state: s.state,
             pinned: favorites().indexOf(s.id) > -1
         });
@@ -402,8 +410,8 @@
         var links = [];
 
         qsa('#navigation a[href]').forEach(function (a) {
-            var href = a.getAttribute('href');
-            if (!href || href.charAt(0) !== '/' || seen[href]) return;
+            var href = PTD.safeHref(a.getAttribute('href') || '');
+            if (!href || seen[href]) return;
             seen[href] = 1;
             var d = describe(href, (a.textContent || '').trim());
             links.push({ href: href, icon: d.icon, label: d.label });
@@ -442,6 +450,9 @@
        ===================================================================== */
 
     function setState(id, state) {
+        id = PTD.safeServerId(id);
+        if (!id) return;
+        if (!/^[a-z0-9_-]{1,32}$/i.test(String(state || ''))) state = 'offline';
         var s = servers.filter(function (x) { return x.id === id; })[0];
         if (s) { if (s.suspended) state = 'suspended'; s.state = state; }
         qsa('#ptd-rail .ptd-rail-item[data-ptd-server="' + id + '"]').forEach(function (n) {
@@ -455,7 +466,9 @@
             n.removeAttribute('aria-current');
         });
         paintNav();
-        qsa('#ptd-rail .ptd-rail-item[data-ptd-server="' + PTD.route.server + '"]').forEach(function (n) {
+        var activeId = PTD.safeServerId(PTD.route.server);
+        if (!activeId) return;
+        qsa('#ptd-rail .ptd-rail-item[data-ptd-server="' + activeId + '"]').forEach(function (n) {
             n.classList.add('is-active');
         });
     }

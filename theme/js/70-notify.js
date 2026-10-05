@@ -169,22 +169,32 @@
 
     var lastHit = {};
 
+    function unsafePattern(src) {
+        if (src.length > 64) return true;
+        if (/\\[1-9]/.test(src)) return true;
+        if (/([+*]|\{\d+,?\d*\})\s*\)?\s*([+*]|\{\d+)/.test(src)) return true;
+        if (/\([^)]*[+*{][^)]*\)\s*([+*{]|\{\d+)/.test(src)) return true;
+        return false;
+    }
+
     function compile(entry) {
-        var m = String(entry).match(/^\/(.*)\/([gimsuy]*)$/);
-        if (m) {
-            try { return new RegExp(m[1], m[2].replace('g', '')); } catch (e) { return null; }
-        }
-        return null;
+        var raw = String(entry || '');
+        if (raw.length > 80) return null;
+        var m = raw.match(/^\/(.+)\/([imsuy]*)$/);
+        if (!m || unsafePattern(m[1])) return null;
+        try { return new RegExp(m[1], m[2].replace(/g/g, '')); } catch (e) { return null; }
     }
 
     function checkWatchers(line) {
         var list = PTD.get('watchers') || [];
-        if (!list.length) return;
+        if (!Array.isArray(list) || !list.length) return;
+        if (list.length > 30) list = list.slice(0, 30);
+        var text = String(line.text || '').slice(0, 240);
         for (var i = 0; i < list.length; i++) {
             var entry = list[i];
-            if (!entry) continue;
+            if (!entry || typeof entry !== 'string') continue;
             var re = compile(entry);
-            var hit = re ? re.test(line.text) : line.text.toLowerCase().indexOf(String(entry).toLowerCase()) > -1;
+            var hit = re ? re.test(text) : text.toLowerCase().indexOf(entry.toLowerCase().slice(0, 80)) > -1;
             if (!hit) continue;
             if (Date.now() - (lastHit[entry] || 0) < 8000) continue;
             lastHit[entry] = Date.now();

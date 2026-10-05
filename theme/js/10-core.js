@@ -223,9 +223,21 @@
         return 'dashboard';
     }
 
+    function safeServerId(id) {
+        id = String(id || '');
+        return /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : '';
+    }
+
+    function safeHref(href) {
+        if (typeof href !== 'string' || href.length < 1 || href.length > 512) return '';
+        if (!/^\/(?!\/)[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$/.test(href)) return '';
+        if (href.indexOf('//') !== -1 || /%2f|%5c/i.test(href)) return '';
+        return href;
+    }
+
     function serverIdOf(path) {
         var m = path.match(/^\/server\/([^/?#]+)/);
-        return m ? m[1] : null;
+        return m ? (safeServerId(m[1]) || null) : null;
     }
 
     /* Container, in dem der Seiteninhalt gerendert wird – bewusst ueber
@@ -371,7 +383,13 @@
         return m ? decodeURIComponent(m[2]) : null;
     }
 
+    var POWER_SIGNAL = { start: 1, stop: 1, restart: 1, kill: 1 };
+
     function api(path, options) {
+        if (typeof path !== 'string' || !/^\/(?!\/)[A-Za-z0-9._~!$&'()*+,;=:@%/?-]*$/.test(path) ||
+            path.indexOf('//') !== -1 || path.indexOf('..') !== -1) {
+            return Promise.reject(new Error('bad path'));
+        }
         options = options || {};
         var headers = {
             'Accept': 'application/json',
@@ -396,6 +414,12 @@
             var ct = res.headers.get('content-type') || '';
             return ct.indexOf('json') > -1 ? res.json() : res.text();
         });
+    }
+
+    function power(id, signal) {
+        id = safeServerId(id);
+        if (!id || !POWER_SIGNAL[signal]) return Promise.reject(new Error('bad power'));
+        return api('/api/client/servers/' + id + '/power', { method: 'POST', body: { signal: signal } });
     }
 
     /* =====================================================================
@@ -449,7 +473,8 @@
         fmt: { bytes: bytes, pct: pct, duration: duration, clockTime: clockTime, initials: initials },
         autoColor: autoColor, toCsv: toCsv, download: download,
         route: route, refreshRoute: refreshRoute, contentRoot: contentRoot, isOurs: isOurs,
-        progress: progress, toast: toast, api: api, cookie: cookie, cache: cache,
+        progress: progress, toast: toast, api: api, power: power, cookie: cookie, cache: cache,
+        safeServerId: safeServerId, safeHref: safeHref,
         loadFonts: loadFonts
     });
 

@@ -103,10 +103,14 @@ banner() {
 
 confirm() {
     [ "$ASSUME_YES" = "1" ] && return 0
-    [ -t 0 ] || return 0
+    if [ ! -t 0 ]; then
+        die "Keine interaktive Konsole. Zum Fortfahren --yes setzen."
+    fi
     local answer
     printf '  %s?%s %s [J/n] ' "$C_ACC" "$C_RESET" "$1"
-    read -r answer || return 0
+    if ! read -r answer; then
+        die "Eingabe abgebrochen."
+    fi
     case "$answer" in [nN]*) return 1 ;; *) return 0 ;; esac
 }
 
@@ -116,6 +120,112 @@ run() {
         return 0
     fi
     "$@"
+}
+
+# -----------------------------------------------------------------------------
+# Eingaben, die in Shell, JSON, HTML oder Archive einfliessen
+# -----------------------------------------------------------------------------
+valid_ref() {
+    local r="$1" part
+    [ -n "$r" ] || return 1
+    [ "${#r}" -le 160 ] || return 1
+    [[ "$r" =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
+    [[ "$r" == -* ]] && return 1
+    local IFS=/
+    for part in $r; do
+        [ -n "$part" ] || return 1
+        [ "$part" != "." ] || return 1
+        [ "$part" != ".." ] || return 1
+    done
+    return 0
+}
+
+valid_asset() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9._-]{1,64}$ ]]
+}
+
+json_escape() {
+    local s=$1
+    s=${s//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//$'\n'/\\n}
+    s=${s//$'\r'/\\r}
+    s=${s//$'\t'/\\t}
+    printf '%s' "$s"
+}
+
+# Ablehnen: 0. Erlaubt: 1. Absichtliche Umkehr, damit "&& return" lesbar bleibt.
+member_rejected() {
+    local m="$1"
+    [ -n "$m" ] || return 0
+    m="${m#./}"
+    case "$m" in
+        /*|*\\*) return 0 ;;
+    esac
+    case "/$m/" in
+        *"/../"*|*"//"*) return 0 ;;
+    esac
+    return 1
+}
+
+archive_is_safe() {
+    local archive="$1" line member n=0
+    [ -f "$archive" ] && [ ! -L "$archive" ] || return 1
+
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        n=$((n + 1))
+        [ "$n" -le 500 ] || return 1
+        case "$line" in
+            -*|d*) ;;
+            *) return 1 ;;
+        esac
+    done < <(tar -tvzf "$archive" 2>/dev/null) || return 1
+    [ "$n" -ge 1 ] || return 1
+
+    while IFS= read -r member; do
+        if member_rejected "$member"; then
+            return 1
+        fi
+    done < <(tar -tzf "$archive" 2>/dev/null) || return 1
+    return 0
+}
+
+prepare_backup_root() {
+    if [ -e "$BACKUP_ROOT" ] && [ ! -d "$BACKUP_ROOT" ]; then
+        die "Backup-Pfad ist kein Verzeichnis: $BACKUP_ROOT"
+    fi
+    if [ -d "$BACKUP_ROOT" ]; then
+        local owner
+        owner="$(stat -c '%U' "$BACKUP_ROOT" 2>/dev/null || echo '')"
+        [ "$owner" = "root" ] || die "Backup-Verzeichnis gehoert nicht root: $BACKUP_ROOT"
+    fi
+    mkdir -p "$BACKUP_ROOT"
+    chown root:root "$BACKUP_ROOT"
+    chmod 700 "$BACKUP_ROOT"
+}
+
+harden_panel_path() {
+    local real mode other d
+    real="$(realpath -e "$PANEL" 2>/dev/null || true)"
+    [ -n "$real" ] || die "Panel-Pfad nicht aufloesbar: $PANEL"
+    [ "$real" != "/" ] || die "Panel-Pfad ungueltig."
+    PANEL="$real"
+    d="$PANEL"
+    while [ "$d" != "/" ]; do
+        mode="$(stat -c '%a' "$d" 2>/dev/null || echo 777)"
+        other="${mode: -1}"
+        case "$other" in
+            2|3|6|7) die "Pfad ist fuer andere beschreibbar: $d" ;;
+        esac
+        d="$(dirname "$d")"
+    done
+    [ -f "$PANEL/artisan" ] && [ ! -L "$PANEL/artisan" ] || die "artisan fehlt oder ist ein Symlink."
+    mode="$(stat -c '%a' "$PANEL/artisan")"
+    other="${mode: -1}"
+    case "$other" in
+        2|3|6|7) die "artisan ist fuer andere beschreibbar." ;;
+    esac
 }
 
 # -----------------------------------------------------------------------------
@@ -143,6 +253,8 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+
+valid_ref "$BRANCH" || die "Ungueltige Git-Ref in --branch oder PTD_BRANCH."
 
 # -----------------------------------------------------------------------------
 # Vorbedingungen
@@ -172,7 +284,9 @@ resolve_source() {
     need_tool tar
 
     SRC_TMP="$(mktemp -d)"
-    trap 'rm -rf "$SRC_TMP"' EXIT
+    local tarball
+    tarball="$(mktemp)"
+    trap 'rm -rf "$SRC_TMP"; rm -f "$tarball"' EXIT
 
     local branches=("$BRANCH")
     local b
@@ -182,17 +296,25 @@ resolve_source() {
 
     local url
     for b in "${branches[@]}"; do
+        valid_ref "$b" || continue
         info "Lade Quelle von GitHub (Ref: $b) …"
         # Erst als Branch, dann als beliebiger Ref (HEAD, Tag, Commit).
-        for url in "https://codeload.github.com/$REPO/tar.gz/refs/heads/$b" \
-                   "https://codeload.github.com/$REPO/tar.gz/$b"; do
-            if curl -fsSL "$url" | tar -xz -C "$SRC_TMP" --strip-components=1 2>/dev/null; then
-                if [ -d "$SRC_TMP/theme/css" ]; then
-                    SRC="$SRC_TMP"
-                    BRANCH="$b"
-                    ok "Quelle geladen (Ref: $b)"
-                    return
-                fi
+        for url in "https://codeload.github.com/${REPO}/tar.gz/refs/heads/${b}" \
+                   "https://codeload.github.com/${REPO}/tar.gz/${b}"; do
+            rm -rf "${SRC_TMP:?}/"* 2>/dev/null || true
+            rm -f "$tarball"
+            if curl -fsSL --proto '=https' --proto-redir '=https' --max-redirs 2 --retry 2 --max-time 60 \
+                -o "$tarball" "$url" \
+                && archive_is_safe "$tarball" \
+                && tar -xzf "$tarball" -C "$SRC_TMP" --strip-components=1 --no-same-owner --no-same-permissions \
+                && [ -d "$SRC_TMP/theme/css" ] \
+                && [ ! -L "$SRC_TMP/theme" ] \
+                && [ ! -L "$SRC_TMP/scripts/build.sh" ] \
+                && ! find "$SRC_TMP" -type l -print -quit | grep -q .; then
+                SRC="$SRC_TMP"
+                BRANCH="$b"
+                ok "Quelle geladen (Ref: $b)"
+                return
             fi
             rm -rf "${SRC_TMP:?}/"* 2>/dev/null || true
         done
@@ -222,21 +344,21 @@ detect_panel() {
                 die "Unter '$PANEL' liegt kein Laravel-Panel (artisan/resources/views fehlen)."
             warn "'$PANEL' sieht nicht nach einem originalen Pterodactyl Panel aus – es wird trotzdem fortgefahren."
         fi
+        harden_panel_path
         return
     fi
 
     local c
     for c in /var/www/pterodactyl /var/www/panel /var/www/html/pterodactyl /var/www/html/panel /srv/pterodactyl; do
-        if is_panel "$c"; then PANEL="$c"; return; fi
+        if is_panel "$c"; then PANEL="$c"; harden_panel_path; return; fi
     done
 
-    local found
-    found="$(find /var/www /srv /opt -maxdepth 4 -name artisan -type f 2>/dev/null | head -n 20 || true)"
     local f d
-    for f in $found; do
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
         d="$(dirname "$f")"
-        if is_panel "$d"; then PANEL="$d"; return; fi
-    done
+        if is_panel "$d"; then PANEL="$d"; harden_panel_path; return; fi
+    done < <(find /var/www /srv /opt -xdev -maxdepth 4 -name artisan -type f 2>/dev/null | head -n 20 || true)
 
     die "Panel nicht gefunden. Bitte mit --path /var/www/pterodactyl angeben."
 }
@@ -341,8 +463,6 @@ make_backup() {
     stamp="$(date +%Y%m%d-%H%M%S)"
     archive="$BACKUP_ROOT/$stamp.tar.gz"
 
-    run mkdir -p "$BACKUP_ROOT"
-
     local files=()
     [ -f "$PANEL/$WRAPPER_REL" ] && files+=("$WRAPPER_REL")
     [ -f "$PANEL/$ADMIN_REL" ] && files+=("$ADMIN_REL")
@@ -358,21 +478,36 @@ make_backup() {
         return 0
     fi
 
+    prepare_backup_root
     tar czf "$archive" -C "$PANEL" "${files[@]}" 2>/dev/null
     chmod 600 "$archive"
+    chown root:root "$archive"
+    printf '%s\n' "$archive" > "$BACKUP_ROOT/latest"
+    chmod 600 "$BACKUP_ROOT/latest"
     ok "Backup: $archive"
-    echo "$archive" > "$BACKUP_ROOT/latest"
 }
 
 restore_backup() {
-    local archive="${1:-}"
-    if [ -z "$archive" ]; then
-        [ -f "$BACKUP_ROOT/latest" ] || die "Kein Backup gefunden unter $BACKUP_ROOT."
-        archive="$(cat "$BACKUP_ROOT/latest")"
+    local archive root real owner
+    prepare_backup_root
+    [ -f "$BACKUP_ROOT/latest" ] || die "Kein Backup gefunden unter $BACKUP_ROOT."
+    archive="$(head -n 1 "$BACKUP_ROOT/latest")"
+    root="$(realpath -e "$BACKUP_ROOT")"
+    real="$(realpath -e "$archive" 2>/dev/null || true)"
+    [ -n "$real" ] && [ -f "$real" ] && [ ! -L "$real" ] || die "Backup nicht vorhanden: $archive"
+    case "$real" in
+        "$root"/*) ;;
+        *) die "Backup liegt ausserhalb von $BACKUP_ROOT." ;;
+    esac
+    owner="$(stat -c '%U' "$real" 2>/dev/null || echo '')"
+    [ "$owner" = "root" ] || die "Backup gehoert nicht root: $real"
+    archive_is_safe "$real" || die "Backup-Archiv enthaelt unsichere Pfade oder Links."
+    confirm "Backup '$real' nach $PANEL zuruecksichern?" || { info "Abgebrochen."; return 0; }
+    if [ "$DRY_RUN" != "1" ]; then
+        tar -xzf "$real" -C "$PANEL" --no-same-owner --no-same-permissions
+    else
+        printf '  %s[dry-run]%s tar -xzf %s -C %s\n' "$C_DIM" "$C_RESET" "$real" "$PANEL"
     fi
-    [ -f "$archive" ] || die "Backup nicht vorhanden: $archive"
-    confirm "Backup '$archive' nach $PANEL zuruecksichern?" || { info "Abgebrochen."; return 0; }
-    run tar xzf "$archive" -C "$PANEL"
     clear_views
     ok "Backup zurueckgesichert."
 }
@@ -389,34 +524,46 @@ clear_views() {
         printf '  %s[dry-run]%s php artisan view:clear\n' "$C_DIM" "$C_RESET"
         return 0
     fi
-    if [ "$user" != "root" ] && command -v runuser >/dev/null 2>&1; then
-        runuser -u "$user" -- "$php" "$PANEL/artisan" view:clear >/dev/null 2>&1 || \
-            (cd "$PANEL" && "$php" artisan view:clear >/dev/null 2>&1) || true
-    else
-        (cd "$PANEL" && "$php" artisan view:clear >/dev/null 2>&1) || true
+    if [ -L "$PANEL/artisan" ]; then
+        warn "artisan ist ein Symlink – view:clear uebersprungen."
+        return 0
     fi
-    ok "View-Cache geleert."
+    if [ "$user" = "root" ] || ! command -v runuser >/dev/null 2>&1; then
+        warn "view:clear nicht als root ausgefuehrt. Bitte danach selbst 'php artisan view:clear' aufrufen."
+        return 0
+    fi
+    if runuser -u "$user" -- "$php" "$PANEL/artisan" view:clear >/dev/null 2>&1; then
+        ok "View-Cache geleert."
+    else
+        warn "view:clear als $user fehlgeschlagen. Bitte danach selbst ausfuehren."
+    fi
 }
 
 # -----------------------------------------------------------------------------
 # Zustandsdatei
 # -----------------------------------------------------------------------------
 write_state() {
-    local asset="$1"
+    local asset="$1" ver branch pv now
+    valid_asset "$asset" || die "Ungueltige Asset-Version."
     [ "$DRY_RUN" = "1" ] && return 0
+    ver="$(tr -cd '0-9A-Za-z._-' < "$SRC/VERSION" 2>/dev/null | head -c 32 || true)"
+    [ -n "$ver" ] || ver="unknown"
+    branch="$(json_escape "$BRANCH")"
+    pv="$(json_escape "$(panel_version || true)")"
+    now="$(json_escape "$(date -Iseconds)")"
     cat > "$PANEL/$STATE_FILE" <<JSON
 {
-  "theme": "$THEME_NAME",
-  "slug": "$THEME_SLUG",
-  "version": "$(cat "$SRC/VERSION" 2>/dev/null | tr -d ' \n\r')",
-  "asset_version": "$asset",
-  "branch": "$BRANCH",
-  "installed_at": "$(date -Iseconds)",
-  "panel_version": "$(panel_version)",
-  "files": ["$WRAPPER_REL", "$ADMIN_REL", "public/themes/$THEME_SLUG"]
+  "theme": "Nebula",
+  "slug": "nebula",
+  "version": "${ver}",
+  "asset_version": "${asset}",
+  "branch": "${branch}",
+  "installed_at": "${now}",
+  "panel_version": "${pv}",
+  "files": ["resources/views/templates/wrapper.blade.php", "resources/views/layouts/admin.blade.php", "public/themes/nebula"]
 }
 JSON
-    chmod 640 "$PANEL/$STATE_FILE" 2>/dev/null || true
+    chmod 600 "$PANEL/$STATE_FILE" 2>/dev/null || true
 }
 
 read_state() {
@@ -435,15 +582,19 @@ install_cli() {
     fi
     rm -rf "$LIB_DIR"
     mkdir -p "$LIB_DIR"
+    chmod 755 "$LIB_DIR"
     cp -r "$SRC/theme" "$SRC/scripts" "$SRC/install.sh" "$SRC/VERSION" "$SRC/theme.json" "$LIB_DIR/" 2>/dev/null || true
     chmod +x "$LIB_DIR/install.sh" "$LIB_DIR/scripts/"*.sh 2>/dev/null || true
 
+    local qlib qpanel
+    printf -v qlib '%q' "$LIB_DIR"
+    printf -v qpanel '%q' "$PANEL"
     cat > "$CLI_PATH" <<CLI
 #!/usr/bin/env bash
 # Nebula Theme – Verwaltungsbefehl
 set -euo pipefail
-LIB="$LIB_DIR"
-PANEL_ARG=(--path "$PANEL")
+LIB=$qlib
+PANEL_ARG=(--path $qpanel)
 case "\${1:-help}" in
     install)   shift; exec bash "\$LIB/install.sh" --install   "\${PANEL_ARG[@]}" "\$@" ;;
     update)    shift; exec bash "\$LIB/install.sh" --update    "\${PANEL_ARG[@]}" "\$@" ;;
@@ -516,9 +667,10 @@ do_install() {
 
     step "5/6  Views anpassen"
     local snip_client snip_admin
+    valid_asset "$asset" || die "Ungueltige Asset-Version."
     snip_client="$(mktemp)"; snip_admin="$(mktemp)"
-    sed "s/__ASSET_VERSION__/$asset/g" "$SRC/theme/blade/head.blade.php"       > "$snip_client"
-    sed "s/__ASSET_VERSION__/$asset/g" "$SRC/theme/blade/admin-head.blade.php" > "$snip_admin"
+    sed "s|__ASSET_VERSION__|${asset}|g" "$SRC/theme/blade/head.blade.php"       > "$snip_client"
+    sed "s|__ASSET_VERSION__|${asset}|g" "$SRC/theme/blade/admin-head.blade.php" > "$snip_admin"
 
     inject_block "$PANEL/$WRAPPER_REL" "$snip_client"
     ok "Client-Oberflaeche: $WRAPPER_REL"
@@ -585,17 +737,19 @@ do_doctor() {
     local fails=0
 
     check() {
-        if eval "$2" >/dev/null 2>&1; then ok "$1"; else err "$1"; fails=$((fails + 1)); fi
+        local label="$1"
+        shift
+        if "$@" >/dev/null 2>&1; then ok "$label"; else err "$label"; fails=$((fails + 1)); fi
     }
 
-    check "Panel gefunden ($PANEL)"                 "is_panel '$PANEL'"
-    check "wrapper.blade.php vorhanden"             "[ -f '$PANEL/$WRAPPER_REL' ]"
-    check "Nebula im Client-Template eingebunden"   "grep -q 'NEBULA:START' '$PANEL/$WRAPPER_REL'"
-    check "Asset-Verzeichnis vorhanden"             "[ -d '$PANEL/public/themes/$THEME_SLUG' ]"
-    check "nebula.css vorhanden"                    "[ -s '$PANEL/public/themes/$THEME_SLUG/nebula.css' ]"
-    check "nebula.js vorhanden"                     "[ -s '$PANEL/public/themes/$THEME_SLUG/nebula.js' ]"
-    check "Assets fuer Webserver lesbar"            "[ -r '$PANEL/public/themes/$THEME_SLUG/nebula.css' ]"
-    check "PHP verfuegbar"                          "[ -n \"\$(php_bin)\" ]"
+    check "Panel gefunden ($PANEL)"               is_panel "$PANEL"
+    check "wrapper.blade.php vorhanden"           test -f "$PANEL/$WRAPPER_REL"
+    check "Nebula im Client-Template eingebunden" grep -q NEBULA:START "$PANEL/$WRAPPER_REL"
+    check "Asset-Verzeichnis vorhanden"           test -d "$PANEL/public/themes/$THEME_SLUG"
+    check "nebula.css vorhanden"                  test -s "$PANEL/public/themes/$THEME_SLUG/nebula.css"
+    check "nebula.js vorhanden"                   test -s "$PANEL/public/themes/$THEME_SLUG/nebula.js"
+    check "Assets fuer Webserver lesbar"          test -r "$PANEL/public/themes/$THEME_SLUG/nebula.css"
+    if [ -n "$(php_bin)" ]; then ok "PHP verfuegbar"; else err "PHP verfuegbar"; fails=$((fails + 1)); fi
 
     if [ -f "$PANEL/$ADMIN_REL" ]; then
         if grep -q 'NEBULA:START' "$PANEL/$ADMIN_REL"; then
@@ -641,6 +795,13 @@ do_status() {
 # -----------------------------------------------------------------------------
 # Ablauf
 # -----------------------------------------------------------------------------
+if [ "${PTD_SELFTEST:-}" = "1" ]; then
+    if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+        return 0
+    fi
+    exit 0
+fi
+
 banner
 need_root
 

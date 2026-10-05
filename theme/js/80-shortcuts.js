@@ -98,14 +98,17 @@
        ===================================================================== */
 
     function goServer(sub) {
-        if (!PTD.route.server) { PTD.toast({ type: 'warn', title: 'Kein Server geoeffnet' }); return; }
-        PTD.navigate('/server/' + PTD.route.server + sub);
+        var id = PTD.safeServerId(PTD.route.server);
+        if (!id) { PTD.toast({ type: 'warn', title: 'Kein Server geoeffnet' }); return; }
+        if (sub && !/^\/[a-z]{1,32}$/.test(sub)) return;
+        PTD.navigate('/server/' + id + (sub || ''));
     }
 
     function power(signal, confirmText) {
-        if (!PTD.route.server) return;
+        var id = PTD.safeServerId(PTD.route.server);
+        if (!id) return;
         if (confirmText && !window.confirm(confirmText)) return;
-        PTD.api('/api/client/servers/' + PTD.route.server + '/power', { method: 'POST', body: { signal: signal } })
+        PTD.power(id, signal)
             .then(function () { PTD.toast({ type: 'ok', title: 'Befehl gesendet', msg: signal }); })
             .catch(function (e) { PTD.toast({ type: 'danger', title: 'Fehlgeschlagen', msg: String(e.status || 'Netzwerkfehler') }); });
     }

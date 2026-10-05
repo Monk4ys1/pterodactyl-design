@@ -198,7 +198,7 @@
     }
 
     function fetchLimits() {
-        var id = PTD.route.server;
+        var id = PTD.safeServerId(PTD.route.server);
         if (!id || limitsFor === id) return;
         limitsFor = id;
         limits = PTD.cache.get('limits:' + id, 300000);
@@ -293,7 +293,7 @@
         for (var i = 0; i < s.v.length; i++) {
             rows.push([new Date(s.t[i]).toISOString(), String(s.v[i])]);
         }
-        var name = (PTD.route.server || 'server') + '-' + def.key + '.csv';
+        var name = (PTD.safeServerId(PTD.route.server) || 'server') + '-' + def.key + '.csv';
         if (PTD.download(name, PTD.toCsv(rows), 'text/csv')) {
             PTD.toast({ type: 'ok', title: 'Gespeichert', msg: name });
         }

@@ -54,7 +54,7 @@
     var STATE_CLASS = { running: 'ptd-badge--ok', starting: 'ptd-badge--warn', stopping: 'ptd-badge--warn', missing: 'ptd-badge--danger' };
 
     function loadInfo() {
-        var id = PTD.route.server;
+        var id = PTD.safeServerId(PTD.route.server);
         if (!id) return;
         if (infoFor === id && info) { paintChips(); return; }
         infoFor = id;

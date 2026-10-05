@@ -11,6 +11,9 @@ ROOT="$(cd "$HERE/.." && pwd)"
 
 command -v node >/dev/null 2>&1 || { echo "node wird benoetigt"; exit 1; }
 
+echo "› Sicherheitspruefungen"
+bash "$HERE/security.test.sh"
+
 echo "› Bundles bauen"
 bash "$ROOT/scripts/build.sh" "$ROOT/dist" >/dev/null
 
