@@ -56,7 +56,7 @@
         motion: true,
         bg: 'aurora',              // aurora | plain | image
         bgImage: '',
-        webfonts: true,
+        webfonts: false,
         fab: true,
         footer: true,
         rail: 'full',              // full | mini

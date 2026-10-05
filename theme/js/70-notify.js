@@ -163,26 +163,39 @@
 
     /* =====================================================================
        Schluesselwort-Waechter
-       Jeder Eintrag ist entweder ein einfacher Text oder ein Ausdruck der
-       Form /muster/i. Treffer werden je Eintrag entprellt.
+       Text, * als Platzhalter, oder /text/i. Kein frei kompiliertes RegExp.
        ===================================================================== */
 
     var lastHit = {};
 
-    function unsafePattern(src) {
-        if (src.length > 64) return true;
-        if (/\\[1-9]/.test(src)) return true;
-        if (/([+*]|\{\d+,?\d*\})\s*\)?\s*([+*]|\{\d+)/.test(src)) return true;
-        if (/\([^)]*[+*{][^)]*\)\s*([+*{]|\{\d+)/.test(src)) return true;
-        return false;
-    }
-
-    function compile(entry) {
+    function watcherHit(entry, text) {
         var raw = String(entry || '');
-        if (raw.length > 80) return null;
-        var m = raw.match(/^\/(.+)\/([imsuy]*)$/);
-        if (!m || unsafePattern(m[1])) return null;
-        try { return new RegExp(m[1], m[2].replace(/g/g, '')); } catch (e) { return null; }
+        if (!raw || raw.length > 80) return false;
+        var hay = String(text || '').slice(0, 240);
+        var needle = raw;
+        var folded = true;
+        var wrapped = /^\/([\s\S]+)\/(i?)$/.exec(raw);
+        if (wrapped) {
+            needle = wrapped[1];
+            folded = wrapped[2] === 'i';
+        }
+        if (!needle || needle.length > 64) return false;
+        if (folded) {
+            hay = hay.toLowerCase();
+            needle = needle.toLowerCase();
+        }
+        if (!needle.split('*').join('')) return false;
+        if (needle.indexOf('*') === -1) return hay.indexOf(needle) !== -1;
+        var parts = needle.split('*');
+        var from = 0;
+        var p, at;
+        for (p = 0; p < parts.length; p++) {
+            if (!parts[p]) continue;
+            at = hay.indexOf(parts[p], from);
+            if (at < 0) return false;
+            from = at + parts[p].length;
+        }
+        return true;
     }
 
     function checkWatchers(line) {
@@ -193,9 +206,7 @@
         for (var i = 0; i < list.length; i++) {
             var entry = list[i];
             if (!entry || typeof entry !== 'string') continue;
-            var re = compile(entry);
-            var hit = re ? re.test(text) : text.toLowerCase().indexOf(entry.toLowerCase().slice(0, 80)) > -1;
-            if (!hit) continue;
+            if (!watcherHit(entry, text)) continue;
             if (Date.now() - (lastHit[entry] || 0) < 8000) continue;
             lastHit[entry] = Date.now();
             PTD.toast({

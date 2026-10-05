@@ -359,6 +359,31 @@ function check(name, cond, extra) {
     check('CSS-Werte aus Einstellungen bleiben geschlossen', guards.bg && guards.accent, JSON.stringify({ bg: guards.bg, accent: guards.accent }));
     check('API-Pfade bleiben same-origin', guards.apiRejected && guards.powerRejected);
 
+    const watch = await page.evaluate(() => {
+        const host = document.querySelector('#ptd-toasts');
+        if (host) host.innerHTML = '';
+        const fontsOff = window.PTD.get('webfonts') === false && !document.querySelector('link[data-ptd-fonts]');
+        window.PTD.set('webfonts', true);
+        const fontsOn = !!document.querySelector('link[href*="fonts.googleapis.com"]');
+        window.PTD.set('webfonts', false);
+        const fontsBack = !document.querySelector('link[data-ptd-fonts]');
+        const start = Date.now();
+        window.PTD.settings.watchers = ['/(a|aa)+$/'];
+        window.PTD.bus.emit('console:line', { text: 'a'.repeat(40) + '!' });
+        const elapsed = Date.now() - start;
+        const toasted = !!document.querySelector('#ptd-toasts .ptd-t-title');
+        window.PTD.settings.watchers = ['zeta-marker'];
+        window.PTD.bus.emit('console:line', { text: 'zeta-marker seen' });
+        const literal = Array.from(document.querySelectorAll('#ptd-toasts .ptd-t-title'))
+            .some((n) => n.textContent.indexOf('zeta-marker') !== -1);
+        window.PTD.settings.watchers = [];
+        window.PTD.save();
+        return { fontsOff, fontsOn, fontsBack, elapsed, toasted, literal };
+    });
+    check('Webfonts standardmaessig aus', watch.fontsOff && watch.fontsBack);
+    check('Webfonts lassen sich einschalten', watch.fontsOn);
+    check('Waechter kompiliert keine Ausdruecke', watch.elapsed < 200 && watch.toasted === false && watch.literal);
+
     /* ================= Fehlerfreiheit ================= */
     const real = errors.filter((e) => !/favicon|Failed to load resource/i.test(e));
     check('Keine JavaScript-Fehler', real.length === 0, real.slice(0, 3).join(' | '));

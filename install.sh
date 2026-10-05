@@ -14,7 +14,7 @@
 #
 #  Optionen:
 #    --path <verzeichnis>   Pfad zum Panel (Standard: automatisch erkannt)
-#    --branch <name>        Git-Ref der Quelle (Branch, Tag oder Commit)
+#    --branch <name>        Git-Ref der Quelle; kein Fallback auf andere Refs
 #    --yes                  Keine Rueckfragen
 #    --no-backup            Kein Backup anlegen (nicht empfohlen)
 #    --no-cli               Den Befehl "nebula" nicht installieren
@@ -22,6 +22,7 @@
 #    --dry-run              Nur anzeigen, nichts schreiben
 # =============================================================================
 set -euo pipefail
+umask 022
 
 REPO="Monk4ys1/pterodactyl-design"
 THEME_SLUG="nebula"
@@ -50,7 +51,7 @@ Befehle
 
 Optionen
   --path <verzeichnis> Pfad zum Panel (Standard: automatisch erkannt)
-  --branch <name>      Git-Ref der Quelle (Branch, Tag oder Commit)
+  --branch <name>      Git-Ref der Quelle; kein Fallback auf andere Refs
   --yes, -y            Keine Rueckfragen stellen
   --no-backup          Kein Backup anlegen (nicht empfohlen)
   --no-cli             Den Befehl "nebula" nicht installieren
@@ -62,7 +63,12 @@ HELP
 
 ACTION="install"
 PANEL=""
-BRANCH="${PTD_BRANCH:-$DEFAULT_BRANCH}"
+REF_EXPLICIT=0
+BRANCH="$DEFAULT_BRANCH"
+if [ -n "${PTD_BRANCH+x}" ]; then
+    BRANCH="$PTD_BRANCH"
+    REF_EXPLICIT=1
+fi
 ASSUME_YES=0
 DO_BACKUP=1
 DO_CLI=1
@@ -170,7 +176,7 @@ member_rejected() {
 
 archive_is_safe() {
     local archive="$1" line member n=0
-    [ -f "$archive" ] && [ ! -L "$archive" ] || return 1
+    regular_file "$archive" || return 1
 
     while IFS= read -r line; do
         [ -n "$line" ] || continue
@@ -220,7 +226,7 @@ harden_panel_path() {
         esac
         d="$(dirname "$d")"
     done
-    [ -f "$PANEL/artisan" ] && [ ! -L "$PANEL/artisan" ] || die "artisan fehlt oder ist ein Symlink."
+    regular_file "$PANEL/artisan" || die "artisan fehlt oder ist ein Symlink."
     mode="$(stat -c '%a' "$PANEL/artisan")"
     other="${mode: -1}"
     case "$other" in
@@ -241,8 +247,8 @@ while [ $# -gt 0 ]; do
         --restore)    ACTION="restore" ;;
         --path)       PANEL="${2:-}"; shift ;;
         --path=*)     PANEL="${1#*=}" ;;
-        --branch)     BRANCH="${2:-}"; shift ;;
-        --branch=*)   BRANCH="${1#*=}" ;;
+        --branch)     BRANCH="${2:-}"; REF_EXPLICIT=1; shift ;;
+        --branch=*)   BRANCH="${1#*=}"; REF_EXPLICIT=1 ;;
         --yes|-y)     ASSUME_YES=1 ;;
         --no-backup)  DO_BACKUP=0 ;;
         --no-cli)     DO_CLI=0 ;;
@@ -260,11 +266,81 @@ valid_ref "$BRANCH" || die "Ungueltige Git-Ref in --branch oder PTD_BRANCH."
 # Vorbedingungen
 # -----------------------------------------------------------------------------
 need_root() {
-    [ "$(id -u)" = "0" ] || die "Bitte als root ausfuehren:  sudo bash $0 $*"
+    [ "$(id -u)" = "0" ] || die "Bitte als root ausfuehren:  sudo bash $0"
+}
+
+regular_file() {
+    [ -f "$1" ] || return 1
+    if [ -L "$1" ]; then
+        return 1
+    fi
+    return 0
+}
+
+real_dir() {
+    [ -d "$1" ] || return 1
+    if [ -L "$1" ]; then
+        return 1
+    fi
+    return 0
+}
+
+installer_dir() {
+    local dir
+    dir="$(dirname "${BASH_SOURCE[0]}")"
+    if dir="$(cd "$dir" 2>/dev/null && pwd)"; then
+        printf '%s' "$dir"
+        return 0
+    fi
+    printf ''
 }
 
 need_tool() {
     command -v "$1" >/dev/null 2>&1 || die "Benoetigtes Programm fehlt: $1"
+}
+
+# Refs, die resolve_source versucht. Eine gesetzte Ref hat keinen Fallback.
+source_ref_list() {
+    local b
+    printf '%s\n' "$BRANCH"
+    [ "${REF_EXPLICIT:-0}" = "1" ] && return 0
+    for b in "${FALLBACK_BRANCHES[@]}"; do
+        [ "$b" = "$BRANCH" ] || printf '%s\n' "$b"
+    done
+}
+
+# Installierte Kopie unter LIB_DIR ist keine Quelle: nebula update muss neu laden.
+source_is_installed_lib() {
+    local script_real here here_real lib_real
+    script_real="$(realpath -e "${BASH_SOURCE[0]}" 2>/dev/null || true)"
+    lib_real="$(realpath -e "$LIB_DIR" 2>/dev/null || true)"
+    if [ -n "$script_real" ] && [ -n "$lib_real" ]; then
+        case "$script_real" in
+            "$lib_real"|"$lib_real"/*) return 0 ;;
+        esac
+    fi
+    here="$(installer_dir)"
+    here_real="$(realpath -e "$here" 2>/dev/null || true)"
+    if [ -n "$here_real" ] && [ -n "$lib_real" ] && [ "$here_real" = "$lib_real" ]; then
+        return 0
+    fi
+    if [ -n "$script_real" ]; then
+        case "$script_real" in
+            "$LIB_DIR"|"$LIB_DIR"/*) return 0 ;;
+        esac
+    fi
+    return 1
+}
+
+cleanup_source() {
+    if [ -n "${SRC_TMP:-}" ]; then
+        rm -rf "$SRC_TMP"
+        SRC_TMP=""
+    fi
+    if [ -n "${SRC_TARBALL:-}" ]; then
+        rm -f "$SRC_TARBALL"
+        SRC_TARBALL=""
+    fi
 }
 
 # -----------------------------------------------------------------------------
@@ -272,9 +348,14 @@ need_tool() {
 # -----------------------------------------------------------------------------
 resolve_source() {
     local here
-    here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+    here="$(installer_dir)"
 
-    if [ -n "$here" ] && [ -d "$here/theme/css" ] && [ -f "$here/scripts/build.sh" ]; then
+    if ! source_is_installed_lib \
+        && [ -n "$here" ] \
+        && [ -d "$here/theme/css" ] \
+        && [ -f "$here/scripts/build.sh" ] \
+        && [ ! -L "$here/theme" ] \
+        && [ ! -L "$here/scripts/build.sh" ]; then
         SRC="$here"
         info "Quelle: lokales Verzeichnis ${C_DIM}$SRC${C_RESET}"
         return
@@ -284,29 +365,28 @@ resolve_source() {
     need_tool tar
 
     SRC_TMP="$(mktemp -d)"
-    local tarball
-    tarball="$(mktemp)"
-    trap 'rm -rf "$SRC_TMP"; rm -f "$tarball"' EXIT
+    trap cleanup_source EXIT
+    SRC_TARBALL="$(mktemp)"
 
-    local branches=("$BRANCH")
-    local b
-    for b in "${FALLBACK_BRANCHES[@]}"; do
-        [ "$b" = "$BRANCH" ] || branches+=("$b")
-    done
+    local branches=() b
+    while IFS= read -r b; do
+        [ -n "$b" ] || continue
+        branches+=("$b")
+    done < <(source_ref_list)
 
     local url
     for b in "${branches[@]}"; do
         valid_ref "$b" || continue
         info "Lade Quelle von GitHub (Ref: $b) …"
-        # Erst als Branch, dann als beliebiger Ref (HEAD, Tag, Commit).
+        # Dieselbe Ref als Branch-URL und als Tag/Commit/HEAD. Keine andere Ref.
         for url in "https://codeload.github.com/${REPO}/tar.gz/refs/heads/${b}" \
                    "https://codeload.github.com/${REPO}/tar.gz/${b}"; do
             rm -rf "${SRC_TMP:?}/"* 2>/dev/null || true
-            rm -f "$tarball"
-            if curl -fsSL --proto '=https' --proto-redir '=https' --max-redirs 2 --retry 2 --max-time 60 \
-                -o "$tarball" "$url" \
-                && archive_is_safe "$tarball" \
-                && tar -xzf "$tarball" -C "$SRC_TMP" --strip-components=1 --no-same-owner --no-same-permissions \
+            rm -f "$SRC_TARBALL"
+            if curl -fsSL --tlsv1.2 --proto '=https' --proto-redir '=https' --max-redirs 2 --retry 2 --max-time 60 \
+                -o "$SRC_TARBALL" "$url" \
+                && archive_is_safe "$SRC_TARBALL" \
+                && tar -xzf "$SRC_TARBALL" -C "$SRC_TMP" --strip-components=1 --no-same-owner --no-same-permissions \
                 && [ -d "$SRC_TMP/theme/css" ] \
                 && [ ! -L "$SRC_TMP/theme" ] \
                 && [ ! -L "$SRC_TMP/scripts/build.sh" ] \
@@ -320,6 +400,9 @@ resolve_source() {
         done
     done
 
+    if [ "${REF_EXPLICIT:-0}" = "1" ]; then
+        die "Quelle fuer die angegebene Ref '$BRANCH' konnte nicht geladen werden. Kein Fallback."
+    fi
     die "Quelle konnte nicht geladen werden. Netzwerk pruefen oder --path/--branch angeben."
 }
 
@@ -340,8 +423,9 @@ detect_panel() {
     if [ -n "$PANEL" ]; then
         PANEL="${PANEL%/}"
         if ! is_panel "$PANEL"; then
-            [ -f "$PANEL/artisan" ] && [ -d "$PANEL/resources/views" ] || \
+            if [ ! -f "$PANEL/artisan" ] || [ ! -d "$PANEL/resources/views" ]; then
                 die "Unter '$PANEL' liegt kein Laravel-Panel (artisan/resources/views fehlen)."
+            fi
             warn "'$PANEL' sieht nicht nach einem originalen Pterodactyl Panel aus – es wird trotzdem fortgefahren."
         fi
         harden_panel_path
@@ -353,12 +437,14 @@ detect_panel() {
         if is_panel "$c"; then PANEL="$c"; harden_panel_path; return; fi
     done
 
-    local f d
-    while IFS= read -r f; do
+    local f d n=0
+    while IFS= read -r -d '' f; do
+        n=$((n + 1))
+        [ "$n" -le 20 ] || break
         [ -n "$f" ] || continue
         d="$(dirname "$f")"
         if is_panel "$d"; then PANEL="$d"; harden_panel_path; return; fi
-    done < <(find /var/www /srv /opt -xdev -maxdepth 4 -name artisan -type f 2>/dev/null | head -n 20 || true)
+    done < <(find /var/www /srv /opt -xdev -maxdepth 4 -name artisan -type f -print0 2>/dev/null || true)
 
     die "Panel nicht gefunden. Bitte mit --path /var/www/pterodactyl angeben."
 }
@@ -399,14 +485,382 @@ php_bin() {
 
 WRAPPER_REL="resources/views/templates/wrapper.blade.php"
 ADMIN_REL="resources/views/layouts/admin.blade.php"
+THEME_REL="public/themes/$THEME_SLUG"
+
+# Jede Komponente muss im Panel liegen und darf kein Symlink sein.
+# Fehlende Endkomponenten sind erlaubt, vorhandene werden mit realpath geprueft.
+path_is_confined() {
+    local rel="$1" panel part rest cur real
+    [ -n "${PANEL:-}" ] || return 1
+    panel="$(realpath -e "$PANEL" 2>/dev/null || true)"
+    [ -n "$panel" ] && [ "$panel" != "/" ] || return 1
+    [ -n "$rel" ] || return 1
+    case "$rel" in
+        /*|*\\*) return 1 ;;
+    esac
+    rest="$rel"
+    cur="$panel"
+    while [ -n "$rest" ]; do
+        part="${rest%%/*}"
+        if [ "$part" = "$rest" ]; then
+            rest=""
+        else
+            rest="${rest#*/}"
+        fi
+        [ -n "$part" ] || return 1
+        [ "$part" != "." ] && [ "$part" != ".." ] || return 1
+        cur="$cur/$part"
+        if [ -L "$cur" ]; then
+            return 1
+        fi
+        if [ ! -e "$cur" ]; then
+            while [ -n "$rest" ]; do
+                part="${rest%%/*}"
+                if [ "$part" = "$rest" ]; then
+                    rest=""
+                else
+                    rest="${rest#*/}"
+                fi
+                [ -n "$part" ] || return 1
+                [ "$part" != "." ] && [ "$part" != ".." ] || return 1
+            done
+            real="$(realpath -e "$(dirname "$cur")" 2>/dev/null || true)"
+            case "$real" in
+                "$panel"|"$panel"/*) return 0 ;;
+                *) return 1 ;;
+            esac
+        fi
+    done
+    real="$(realpath -e "$cur" 2>/dev/null || true)"
+    case "$real" in
+        "$panel"|"$panel"/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+require_confined() {
+    path_is_confined "$1" || die "Pfad verlaesst das Panel oder enthaelt einen Symlink: $1"
+}
+
+under_panel() {
+    local real="$1" panel
+    panel="$(realpath -e "$PANEL" 2>/dev/null || true)"
+    if [ -z "$panel" ] || [ -z "$real" ]; then
+        return 1
+    fi
+    case "$real" in
+        "$panel"/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Schreibt nur ueber eine neue Datei im bereits geprueften Verzeichnis und
+# ersetzt den Zieleintrag per rename, ohne einen Symlink zu folgen.
+safe_install_file() {
+    local dest="$1" srcf="$2" rel dir tmp real parent_rel
+    rel="${dest#"$PANEL"/}"
+    [ "$dest" = "$PANEL/$rel" ] || die "Ziel ausserhalb des Panels."
+    parent_rel="$(dirname "$rel")"
+    [ "$parent_rel" != "." ] || parent_rel=""
+    if [ -n "$parent_rel" ]; then
+        require_confined "$parent_rel"
+    fi
+    if [ -L "$dest" ]; then
+        die "Ziel ist ein Symlink: $rel"
+    fi
+    if [ -e "$dest" ] && [ ! -f "$dest" ]; then
+        die "Ziel ist keine regulaere Datei: $rel"
+    fi
+    if [ -e "$dest" ]; then
+        require_confined "$rel"
+    fi
+    dir="$(dirname "$dest")"
+    real_dir "$dir" || die "Zielverzeichnis fehlt oder ist ein Symlink: ${parent_rel:-.}"
+    tmp="$(mktemp "$dir/.nebula.XXXXXX")"
+    real="$(realpath -e "$tmp" 2>/dev/null || true)"
+    if ! under_panel "$real"; then
+        rm -f "$tmp"
+        die "Temporaere Datei liegt ausserhalb des Panels."
+    fi
+    if ! cp "$srcf" "$tmp"; then
+        rm -f "$tmp"
+        die "Kopieren fehlgeschlagen: $rel"
+    fi
+    local mode="${3:-644}"
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] || { rm -f "$tmp"; die "Ungueltiger Dateimodus."; }
+    chmod "$mode" "$tmp"
+    if [ -L "$dir" ] || [ -L "$dest" ]; then
+        rm -f "$tmp"
+        die "Zielpfad wurde waehrend des Schreibens zu einem Symlink: $rel"
+    fi
+    if ! mv -T "$tmp" "$dest"; then
+        rm -f "$tmp"
+        die "Schreiben fehlgeschlagen: $rel"
+    fi
+    regular_file "$dest" || die "Schreiben fehlgeschlagen: $rel"
+    real="$(realpath -e "$dest" 2>/dev/null || true)"
+    if ! under_panel "$real"; then
+        rm -f -- "$dest"
+        die "Geschriebene Datei liegt ausserhalb des Panels: $rel"
+    fi
+}
+
+safe_replace_file() {
+    local dest="$1" srcf="$2" rel dir tmp real mode
+    rel="${dest#"$PANEL"/}"
+    [ "$dest" = "$PANEL/$rel" ] || die "Ziel ausserhalb des Panels."
+    require_confined "$rel"
+    regular_file "$dest" || die "Zieldatei fehlt oder ist ein Symlink: $rel"
+    dir="$(dirname "$dest")"
+    real_dir "$dir" || die "Zielverzeichnis fehlt oder ist ein Symlink."
+    tmp="$(mktemp "$dir/.nebula.XXXXXX")"
+    real="$(realpath -e "$tmp" 2>/dev/null || true)"
+    if ! under_panel "$real"; then
+        rm -f "$tmp"
+        die "Temporaere Datei liegt ausserhalb des Panels."
+    fi
+    if ! cp "$srcf" "$tmp"; then
+        rm -f "$tmp"
+        die "Kopieren fehlgeschlagen: $rel"
+    fi
+    mode="$(stat -c '%a' "$dest" 2>/dev/null || echo 644)"
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] || mode="644"
+    chmod "$mode" "$tmp"
+    if [ "$(id -u)" = "0" ]; then
+        if ! chown --reference="$dest" "$tmp"; then
+            rm -f "$tmp"
+            die "Besitzer konnte nicht uebernommen werden: $rel"
+        fi
+    fi
+    if [ -L "$dir" ] || [ -L "$dest" ]; then
+        rm -f "$tmp"
+        die "Zielpfad wurde waehrend des Schreibens zu einem Symlink: $rel"
+    fi
+    if ! mv -T "$tmp" "$dest"; then
+        rm -f "$tmp"
+        die "Schreiben fehlgeschlagen: $rel"
+    fi
+    regular_file "$dest" || die "Schreiben fehlgeschlagen: $rel"
+    real="$(realpath -e "$dest" 2>/dev/null || true)"
+    if ! under_panel "$real"; then
+        rm -f -- "$dest"
+        die "Geschriebene Datei liegt ausserhalb des Panels: $rel"
+    fi
+}
+
+safe_reset_theme_dir() {
+    local parent_rel="public/themes" target="$PANEL/$THEME_REL"
+    require_confined "$parent_rel"
+    real_dir "$PANEL/$parent_rel" || die "public/themes fehlt oder ist ein Symlink."
+    if [ -L "$target" ]; then
+        rm -f -- "$target"
+    elif [ -d "$target" ]; then
+        require_confined "$THEME_REL"
+        rm -rf -- "$target"
+    elif [ -e "$target" ]; then
+        rm -f -- "$target"
+    fi
+    mkdir -- "$target"
+    require_confined "$THEME_REL"
+    chmod 755 "$target"
+}
+
+known_asset_name() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9._-]+$ ]] || return 1
+    case "$1" in
+        nebula*.css|nebula*.js|theme.json|ASSET_VERSION) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+install_built_assets() {
+    local build_dir="$1" f base target found=0 user group
+    local -a candidates=()
+    target="$PANEL/$THEME_REL"
+    safe_reset_theme_dir
+    local nullglob_was=0
+    shopt -q nullglob && nullglob_was=1
+    shopt -s nullglob
+    candidates=("$build_dir"/nebula*.css "$build_dir"/nebula*.js "$build_dir/theme.json" "$build_dir/ASSET_VERSION")
+    if [ "$nullglob_was" = "0" ]; then
+        shopt -u nullglob
+    fi
+    [ "${#candidates[@]}" -gt 0 ] || die "Build lieferte keine Assets."
+    for f in "${candidates[@]}"; do
+        regular_file "$f" || die "Build-Artefakt ungueltig: $f"
+        base="$(basename "$f")"
+        known_asset_name "$base" || die "Ungueltiger Asset-Name: $base"
+        safe_install_file "$target/$base" "$f"
+        found=1
+    done
+    [ "$found" = "1" ] || die "Build lieferte keine Assets."
+    if [ "$(id -u)" = "0" ]; then
+        user="$(web_user)"
+        group="$(web_group)"
+        chown -h "$user:$group" "$target"
+        for f in "$target"/*; do
+            [ -e "$f" ] || continue
+            regular_file "$f" || die "Asset ist ein Symlink: $(basename "$f")"
+            chown -h "$user:$group" "$f"
+            chmod 644 "$f"
+        done
+    fi
+}
+
+remove_theme_dir() {
+    local parent_rel="public/themes" target="$PANEL/$THEME_REL"
+    if [ ! -e "$PANEL/$parent_rel" ] && [ ! -L "$PANEL/$parent_rel" ]; then
+        return 0
+    fi
+    require_confined "$parent_rel"
+    if [ -L "$target" ]; then
+        rm -f -- "$target"
+        return 0
+    fi
+    if [ ! -e "$target" ]; then
+        return 0
+    fi
+    require_confined "$THEME_REL"
+    rm -rf -- "$target"
+}
+
+remove_state_file() {
+    local dest="$PANEL/$STATE_FILE"
+    if [ -L "$dest" ]; then
+        rm -f -- "$dest"
+        return 0
+    fi
+    if [ -e "$dest" ]; then
+        require_confined "$STATE_FILE"
+        rm -f -- "$dest"
+    fi
+}
+
+# Kopiert nur die bekannten Mitglieder aus einem bereits entpackten Archiv.
+restore_members_from() {
+    local root="$1" rel src base f src_real root_real
+    local -a blades=() assets=()
+    root_real="$(realpath -e "$root" 2>/dev/null || true)"
+    [ -n "$root_real" ] || die "Entpacktes Backup nicht lesbar."
+    for rel in "$WRAPPER_REL" "$ADMIN_REL"; do
+        src="$root/$rel"
+        [ -e "$src" ] || [ -L "$src" ] || continue
+        regular_file "$src" || die "Backup-Mitglied ist kein regulaeres File: $rel"
+        src_real="$(realpath -e "$src" 2>/dev/null || true)"
+        case "$src_real" in
+            "$root_real"/*) ;;
+            *) die "Backup-Mitglied liegt ausserhalb des Archivs: $rel" ;;
+        esac
+        require_confined "$rel"
+        blades+=("$rel")
+    done
+    local theme_src="$root/$THEME_REL" do_theme=0
+    if [ -e "$theme_src" ] || [ -L "$theme_src" ]; then
+        real_dir "$theme_src" || die "Theme-Backup ist kein Verzeichnis."
+        src_real="$(realpath -e "$theme_src" 2>/dev/null || true)"
+        case "$src_real" in
+            "$root_real"/*) ;;
+            *) die "Theme-Backup liegt ausserhalb des Archivs." ;;
+        esac
+        require_confined "public/themes"
+        for f in "$theme_src"/*; do
+            [ -e "$f" ] || [ -L "$f" ] || continue
+            base="$(basename "$f")"
+            known_asset_name "$base" || die "Unbekanntes Backup-Asset: $base"
+            regular_file "$f" || die "Backup-Asset ist kein regulaeres File: $base"
+            src_real="$(realpath -e "$f" 2>/dev/null || true)"
+            case "$src_real" in
+                "$root_real"/*) ;;
+                *) die "Backup-Asset liegt ausserhalb des Archivs: $base" ;;
+            esac
+            assets+=("$base")
+        done
+        do_theme=1
+    fi
+    for rel in "${blades[@]+"${blades[@]}"}"; do
+        [ -n "$rel" ] || continue
+        safe_replace_file "$PANEL/$rel" "$root/$rel"
+    done
+    if [ "$do_theme" = "1" ]; then
+        safe_reset_theme_dir
+        for base in "${assets[@]+"${assets[@]}"}"; do
+            [ -n "$base" ] || continue
+            safe_install_file "$PANEL/$THEME_REL/$base" "$theme_src/$base"
+        done
+    fi
+}
+
+# Ersetzt LIB_DIR erst, wenn die neue Kopie vollstaendig ist.
+swap_lib_dir() {
+    local src="$1" parent stage old src_real lib_real
+    if [ -z "$src" ] || [ ! -d "$src" ]; then
+        die "CLI-Quelle fehlt."
+    fi
+    src_real="$(realpath -e "$src" 2>/dev/null || true)"
+    [ -n "$src_real" ] || die "CLI-Quelle nicht aufloesbar."
+    if [ -e "$LIB_DIR" ] || [ -L "$LIB_DIR" ]; then
+        lib_real="$(realpath -e "$LIB_DIR" 2>/dev/null || true)"
+        if [ -n "$lib_real" ] && [ "$src_real" = "$lib_real" ]; then
+            die "CLI-Quelle ist das Installationsverzeichnis selbst."
+        fi
+    fi
+    parent="$(dirname "$LIB_DIR")"
+    [ -d "$parent" ] || die "CLI-Elternverzeichnis fehlt."
+    stage="$(mktemp -d "$parent/.nebula-stage.XXXXXX")"
+    if ! cp -a "$src/theme" "$src/scripts" "$src/install.sh" "$src/VERSION" "$src/theme.json" "$stage/"; then
+        rm -rf "$stage"
+        die "CLI-Kopie fehlgeschlagen."
+    fi
+    if [ ! -f "$stage/install.sh" ] || [ ! -d "$stage/theme/css" ] || [ ! -f "$stage/scripts/build.sh" ]; then
+        rm -rf "$stage"
+        die "CLI-Kopie unvollstaendig."
+    fi
+    if find "$stage" -type l -print -quit | grep -q .; then
+        rm -rf "$stage"
+        die "CLI-Quelle enthaelt Symlinks."
+    fi
+    if ! chmod 755 "$stage" "$stage/install.sh"; then
+        rm -rf "$stage"
+        die "CLI-Rechte konnten nicht gesetzt werden."
+    fi
+    local script
+    for script in "$stage/scripts/"*.sh; do
+        [ -f "$script" ] || { rm -rf "$stage"; die "CLI-Skript fehlt."; }
+        if ! chmod +x "$script"; then
+            rm -rf "$stage"
+            die "CLI-Rechte konnten nicht gesetzt werden."
+        fi
+    done
+    old=""
+    if [ -e "$LIB_DIR" ] || [ -L "$LIB_DIR" ]; then
+        old="$parent/.nebula-old.$$.$RANDOM"
+        rm -rf -- "$old"
+        mv -- "$LIB_DIR" "$old"
+    fi
+    if ! mv -- "$stage" "$LIB_DIR"; then
+        rm -rf -- "$stage"
+        if [ -n "$old" ] && [ -e "$old" ]; then
+            mv -- "$old" "$LIB_DIR"
+        fi
+        die "CLI-Verzeichnis konnte nicht ersetzt werden."
+    fi
+    if [ -n "$old" ]; then
+        rm -rf -- "$old"
+    fi
+    chmod 755 "$LIB_DIR"
+}
 
 # -----------------------------------------------------------------------------
 # Blade-Injektion
 # -----------------------------------------------------------------------------
 strip_block() {
     # $1 = Datei
-    local file="$1" tmp
-    [ -f "$file" ] || return 0
+    local file="$1" tmp rel
+    rel="${file#"$PANEL"/}"
+    [ "$file" = "$PANEL/$rel" ] || die "Blade-Pfad ausserhalb des Panels."
+    [ -e "$file" ] || [ -L "$file" ] || return 0
+    require_confined "$rel"
+    regular_file "$file" || die "Blade-Datei fehlt oder ist ein Symlink: $rel"
     grep -q 'NEBULA:START' "$file" || return 0
     tmp="$(mktemp)"
     sed '/{{-- NEBULA:START --}}/,/{{-- NEBULA:END --}}/d' "$file" > "$tmp"
@@ -415,7 +869,7 @@ strip_block() {
         rm -f "$tmp"
         return 0
     fi
-    cat "$tmp" > "$file"          # erhaelt Besitzer, Rechte und SELinux-Kontext
+    safe_replace_file "$file" "$tmp"
     rm -f "$tmp"
 }
 
@@ -450,7 +904,7 @@ inject_block() {
         return 0
     fi
 
-    cat "$tmp" > "$file"
+    safe_replace_file "$file" "$tmp"
     rm -f "$tmp"
 }
 
@@ -464,9 +918,24 @@ make_backup() {
     archive="$BACKUP_ROOT/$stamp.tar.gz"
 
     local files=()
-    [ -f "$PANEL/$WRAPPER_REL" ] && files+=("$WRAPPER_REL")
-    [ -f "$PANEL/$ADMIN_REL" ] && files+=("$ADMIN_REL")
-    [ -d "$PANEL/public/themes/$THEME_SLUG" ] && files+=("public/themes/$THEME_SLUG")
+    if [ -e "$PANEL/$WRAPPER_REL" ] || [ -L "$PANEL/$WRAPPER_REL" ]; then
+        require_confined "$WRAPPER_REL"
+        regular_file "$PANEL/$WRAPPER_REL" || die "wrapper.blade.php ist kein regulaeres File."
+        files+=("$WRAPPER_REL")
+    fi
+    if [ -e "$PANEL/$ADMIN_REL" ] || [ -L "$PANEL/$ADMIN_REL" ]; then
+        require_confined "$ADMIN_REL"
+        regular_file "$PANEL/$ADMIN_REL" || die "admin.blade.php ist kein regulaeres File."
+        files+=("$ADMIN_REL")
+    fi
+    if [ -e "$PANEL/$THEME_REL" ] || [ -L "$PANEL/$THEME_REL" ]; then
+        require_confined "$THEME_REL"
+        real_dir "$PANEL/$THEME_REL" || die "Theme-Verzeichnis ist kein echtes Verzeichnis."
+        if find "$PANEL/$THEME_REL" -type l -print -quit | grep -q .; then
+            die "Theme-Verzeichnis enthaelt Symlinks – Backup abgelehnt."
+        fi
+        files+=("$THEME_REL")
+    fi
 
     if [ "${#files[@]}" -eq 0 ]; then
         warn "Nichts zu sichern."
@@ -494,7 +963,9 @@ restore_backup() {
     archive="$(head -n 1 "$BACKUP_ROOT/latest")"
     root="$(realpath -e "$BACKUP_ROOT")"
     real="$(realpath -e "$archive" 2>/dev/null || true)"
-    [ -n "$real" ] && [ -f "$real" ] && [ ! -L "$real" ] || die "Backup nicht vorhanden: $archive"
+    if [ -z "$real" ] || ! regular_file "$real"; then
+        die "Backup nicht vorhanden: $archive"
+    fi
     case "$real" in
         "$root"/*) ;;
         *) die "Backup liegt ausserhalb von $BACKUP_ROOT." ;;
@@ -504,9 +975,17 @@ restore_backup() {
     archive_is_safe "$real" || die "Backup-Archiv enthaelt unsichere Pfade oder Links."
     confirm "Backup '$real' nach $PANEL zuruecksichern?" || { info "Abgebrochen."; return 0; }
     if [ "$DRY_RUN" != "1" ]; then
-        tar -xzf "$real" -C "$PANEL" --no-same-owner --no-same-permissions
+        local extract
+        extract="$(mktemp -d)"
+        if ! tar -xzf "$real" -C "$extract" --no-same-owner --no-same-permissions \
+            || find "$extract" -type l -print -quit | grep -q .; then
+            rm -rf "$extract"
+            die "Backup konnte nicht sicher entpackt werden."
+        fi
+        restore_members_from "$extract"
+        rm -rf "$extract"
     else
-        printf '  %s[dry-run]%s tar -xzf %s -C %s\n' "$C_DIM" "$C_RESET" "$real" "$PANEL"
+        printf '  %s[dry-run]%s Backup nach %s entpacken und bekannte Dateien kopieren\n' "$C_DIM" "$C_RESET" "$PANEL"
     fi
     clear_views
     ok "Backup zurueckgesichert."
@@ -551,7 +1030,9 @@ write_state() {
     branch="$(json_escape "$BRANCH")"
     pv="$(json_escape "$(panel_version || true)")"
     now="$(json_escape "$(date -Iseconds)")"
-    cat > "$PANEL/$STATE_FILE" <<JSON
+    local tmp
+    tmp="$(mktemp)"
+    cat > "$tmp" <<JSON
 {
   "theme": "Nebula",
   "slug": "nebula",
@@ -563,11 +1044,14 @@ write_state() {
   "files": ["resources/views/templates/wrapper.blade.php", "resources/views/layouts/admin.blade.php", "public/themes/nebula"]
 }
 JSON
-    chmod 600 "$PANEL/$STATE_FILE" 2>/dev/null || true
+    safe_install_file "$PANEL/$STATE_FILE" "$tmp" 600
+    rm -f "$tmp"
+    regular_file "$PANEL/$STATE_FILE" || die "Zustandsdatei unsicher."
+    chmod 600 "$PANEL/$STATE_FILE"
 }
 
 read_state() {
-    [ -f "$PANEL/$STATE_FILE" ] || return 1
+    regular_file "$PANEL/$STATE_FILE" || return 1
     sed -n "s/.*\"$1\": *\"\([^\"]*\)\".*/\1/p" "$PANEL/$STATE_FILE" | head -n1
 }
 
@@ -580,16 +1064,13 @@ install_cli() {
         printf '  %s[dry-run]%s CLI nach %s installieren\n' "$C_DIM" "$C_RESET" "$CLI_PATH"
         return 0
     fi
-    rm -rf "$LIB_DIR"
-    mkdir -p "$LIB_DIR"
-    chmod 755 "$LIB_DIR"
-    cp -r "$SRC/theme" "$SRC/scripts" "$SRC/install.sh" "$SRC/VERSION" "$SRC/theme.json" "$LIB_DIR/" 2>/dev/null || true
-    chmod +x "$LIB_DIR/install.sh" "$LIB_DIR/scripts/"*.sh 2>/dev/null || true
+    swap_lib_dir "$SRC"
 
-    local qlib qpanel
+    local qlib qpanel clitemp
     printf -v qlib '%q' "$LIB_DIR"
     printf -v qpanel '%q' "$PANEL"
-    cat > "$CLI_PATH" <<CLI
+    clitemp="$(mktemp "$(dirname "$CLI_PATH")/.nebula-cli.XXXXXX")"
+    cat > "$clitemp" <<CLI
 #!/usr/bin/env bash
 # Nebula Theme – Verwaltungsbefehl
 set -euo pipefail
@@ -612,7 +1093,8 @@ case "\${1:-help}" in
         ;;
 esac
 CLI
-    chmod +x "$CLI_PATH"
+    chmod 755 "$clitemp"
+    mv -T "$clitemp" "$CLI_PATH"
     ok "Befehl installiert: ${C_B}nebula${C_RESET}"
 }
 
@@ -634,7 +1116,8 @@ do_install() {
         *)             warn "Unerwartete Version '$pv'. Bei Problemen: nebula uninstall" ;;
     esac
 
-    [ -f "$PANEL/$WRAPPER_REL" ] || die "Erwartete Datei fehlt: $PANEL/$WRAPPER_REL"
+    require_confined "$WRAPPER_REL"
+    regular_file "$PANEL/$WRAPPER_REL" || die "Erwartete Datei fehlt oder ist ein Symlink: $PANEL/$WRAPPER_REL"
 
     if grep -q 'NEBULA:START' "$PANEL/$WRAPPER_REL" 2>/dev/null; then
         info "Bestehende Installation gefunden – wird ersetzt."
@@ -653,15 +1136,10 @@ do_install() {
     ok "Bundles erstellt (Asset-Version $asset)"
 
     step "4/6  Dateien kopieren"
-    local target="$PANEL/public/themes/$THEME_SLUG"
-    run rm -rf "$target"
-    run mkdir -p "$target"
     if [ "$DRY_RUN" != "1" ]; then
-        cp "$build_dir"/nebula*.css "$build_dir"/nebula*.js "$build_dir/theme.json" "$target/"
-        cp "$build_dir/ASSET_VERSION" "$target/ASSET_VERSION"
-        chown -R "$(web_user)":"$(web_group)" "$target"
-        find "$target" -type f -exec chmod 644 {} +
-        chmod 755 "$target"
+        install_built_assets "$build_dir"
+    else
+        printf '  %s[dry-run]%s Assets nach %s\n' "$C_DIM" "$C_RESET" "$PANEL/$THEME_REL"
     fi
     ok "Assets unter public/themes/$THEME_SLUG"
 
@@ -714,8 +1192,12 @@ do_uninstall() {
         [ "$DRY_RUN" = "1" ] || ok "Block aus $ADMIN_REL entfernt."
     fi
 
-    run rm -rf "$PANEL/public/themes/$THEME_SLUG"
-    run rm -f "$PANEL/$STATE_FILE"
+    if [ "$DRY_RUN" = "1" ]; then
+        printf '  %s[dry-run]%s %s und %s entfernen\n' "$C_DIM" "$C_RESET" "$THEME_REL" "$STATE_FILE"
+    else
+        remove_theme_dir
+        remove_state_file
+    fi
     [ "$DRY_RUN" = "1" ] || ok "Assets entfernt."
 
     clear_views

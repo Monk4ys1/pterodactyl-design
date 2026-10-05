@@ -304,7 +304,7 @@
             section('Schluesselwoerter in der Konsole', [
                 block('Ueberwachte Begriffe',
                     listEditor('watchers', 'z. B. joined the game oder /error/i'),
-                    'Einfacher Text oder ein Ausdruck der Form /muster/i.')
+                    'Text, * als Platzhalter, oder /text/i ohne Gross-/Kleinschreibung.')
             ])
         ];
     }
