@@ -126,7 +126,7 @@
             onClick: function () {
                 var text = plain();
                 if (!text) { PTD.toast({ type: 'warn', title: 'Puffer ist leer' }); return; }
-                var name = (PTD.route.server || 'server') + '-console.log';
+                var name = (PTD.safeServerId(PTD.route.server) || 'server') + '-console.log';
                 if (PTD.download(name, text)) PTD.toast({ type: 'ok', title: 'Gespeichert', msg: name });
             }
         });
@@ -369,7 +369,7 @@
                 el('button', {
                     class: 'ptd-dock-btn', type: 'button', 'aria-label': 'Zur Konsole',
                     html: icon('expand', 13),
-                    onclick: function () { PTD.navigate('/server/' + PTD.route.server); }
+                    onclick: function () { PTD.navigate('/server/' + (PTD.safeServerId(PTD.route.server) || '')); }
                 }),
                 el('button', {
                     class: 'ptd-dock-btn', type: 'button', 'aria-label': 'Schliessen',

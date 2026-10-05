@@ -18,10 +18,11 @@
        ===================================================================== */
 
     function navigate(href) {
+        href = PTD.safeHref(href);
         if (!href) return;
         if (href.indexOf('/admin') === 0) { window.location.assign(href); return; }
 
-        var existing = qs('a[href="' + href.replace(/"/g, '\\"') + '"]:not(.ptd-rail-item)');
+        var existing = qs('a[href="' + href + '"]:not(.ptd-rail-item)');
         if (existing) { existing.click(); return; }
 
         var before = PTD._lastScanAt || 0;
@@ -93,10 +94,10 @@
     ];
 
     function power(signal, confirmText) {
-        var id = PTD.route.server;
+        var id = PTD.safeServerId(PTD.route.server);
         if (!id) return;
         if (confirmText && !window.confirm(confirmText)) return;
-        PTD.api('/api/client/servers/' + id + '/power', { method: 'POST', body: { signal: signal } })
+        PTD.power(id, signal)
             .then(function () { PTD.toast({ type: 'ok', title: 'Befehl gesendet', msg: signal }); })
             .catch(function (e) {
                 PTD.toast({ type: 'danger', title: 'Fehlgeschlagen', msg: 'HTTP ' + (e.status || '?') });

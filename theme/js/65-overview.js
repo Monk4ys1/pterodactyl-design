@@ -76,8 +76,10 @@
     }
 
     function power(id, signal, btn) {
+        id = PTD.safeServerId(id);
+        if (!id) return;
         if (btn) { btn.disabled = true; setTimeout(function () { btn.disabled = false; }, 2500); }
-        PTD.api('/api/client/servers/' + id + '/power', { method: 'POST', body: { signal: signal } })
+        PTD.power(id, signal)
             .then(function () { PTD.toast({ type: 'ok', title: 'Befehl gesendet', msg: signal }); })
             .catch(function (e) {
                 PTD.toast({ type: 'danger', title: 'Fehlgeschlagen', msg: 'HTTP ' + (e.status || '?') });
@@ -114,7 +116,7 @@
 
         var node = el('a', {
             class: 'ptd-sv',
-            href: '/server/' + s.id,
+            href: '/server/' + PTD.safeServerId(s.id),
             'data-sid': s.id,
             'data-state': s.suspended ? 'suspended' : 'offline',
             style: { '--tag': tag.color }
@@ -140,7 +142,7 @@
         node.addEventListener('click', function (e) {
             if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
             e.preventDefault();
-            PTD.navigate('/server/' + s.id);
+            PTD.navigate('/server/' + PTD.safeServerId(s.id));
         });
 
         return { node: node, state: state, cpu: cpu, mem: mem, pin: pin, data: s };
@@ -312,7 +314,9 @@
             if (s.suspended) return;
             setTimeout(function () {
                 if (!active()) return;
-                PTD.api('/api/client/servers/' + s.id + '/resources').then(function (res) {
+                var sid = PTD.safeServerId(s.id);
+                if (!sid) return;
+                PTD.api('/api/client/servers/' + sid + '/resources').then(function (res) {
                     var a = res && res.attributes;
                     if (!a) return;
                     record(s.id, a.current_state, a.resources, false);

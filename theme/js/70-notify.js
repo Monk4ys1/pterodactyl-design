@@ -163,29 +163,50 @@
 
     /* =====================================================================
        Schluesselwort-Waechter
-       Jeder Eintrag ist entweder ein einfacher Text oder ein Ausdruck der
-       Form /muster/i. Treffer werden je Eintrag entprellt.
+       Text, * als Platzhalter, oder /text/i. Kein frei kompiliertes RegExp.
        ===================================================================== */
 
     var lastHit = {};
 
-    function compile(entry) {
-        var m = String(entry).match(/^\/(.*)\/([gimsuy]*)$/);
-        if (m) {
-            try { return new RegExp(m[1], m[2].replace('g', '')); } catch (e) { return null; }
+    function watcherHit(entry, text) {
+        var raw = String(entry || '');
+        if (!raw || raw.length > 80) return false;
+        var hay = String(text || '').slice(0, 240);
+        var needle = raw;
+        var folded = true;
+        var wrapped = /^\/([\s\S]+)\/(i?)$/.exec(raw);
+        if (wrapped) {
+            needle = wrapped[1];
+            folded = wrapped[2] === 'i';
         }
-        return null;
+        if (!needle || needle.length > 64) return false;
+        if (folded) {
+            hay = hay.toLowerCase();
+            needle = needle.toLowerCase();
+        }
+        if (!needle.split('*').join('')) return false;
+        if (needle.indexOf('*') === -1) return hay.indexOf(needle) !== -1;
+        var parts = needle.split('*');
+        var from = 0;
+        var p, at;
+        for (p = 0; p < parts.length; p++) {
+            if (!parts[p]) continue;
+            at = hay.indexOf(parts[p], from);
+            if (at < 0) return false;
+            from = at + parts[p].length;
+        }
+        return true;
     }
 
     function checkWatchers(line) {
         var list = PTD.get('watchers') || [];
-        if (!list.length) return;
+        if (!Array.isArray(list) || !list.length) return;
+        if (list.length > 30) list = list.slice(0, 30);
+        var text = String(line.text || '').slice(0, 240);
         for (var i = 0; i < list.length; i++) {
             var entry = list[i];
-            if (!entry) continue;
-            var re = compile(entry);
-            var hit = re ? re.test(line.text) : line.text.toLowerCase().indexOf(String(entry).toLowerCase()) > -1;
-            if (!hit) continue;
+            if (!entry || typeof entry !== 'string') continue;
+            if (!watcherHit(entry, text)) continue;
             if (Date.now() - (lastHit[entry] || 0) < 8000) continue;
             lastHit[entry] = Date.now();
             PTD.toast({

@@ -8,6 +8,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${1:-$ROOT/dist}"
 VERSION="$(tr -d ' \n\r' < "$ROOT/VERSION")"
+if ! [[ "$VERSION" =~ ^[0-9A-Za-z][0-9A-Za-z._-]{0,31}$ ]]; then
+    echo "Ungueltige VERSION (nur Buchstaben, Ziffern, Punkt, Unterstrich, Bindestrich)." >&2
+    exit 1
+fi
 
 CLIENT_CSS=(00-tokens.css 10-base.css 20-shell.css 30-components.css 40-console.css
             50-auth.css 60-ptd-ui.css 70-charts.css 80-overview.css)

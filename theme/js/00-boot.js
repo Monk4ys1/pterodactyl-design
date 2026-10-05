@@ -56,7 +56,7 @@
         motion: true,
         bg: 'aurora',              // aurora | plain | image
         bgImage: '',
-        webfonts: true,
+        webfonts: false,
         fab: true,
         footer: true,
         rail: 'full',              // full | mini
@@ -131,9 +131,32 @@
         } catch (e) { return 'dark'; }
     }
 
+    function clampNum(n, min, max, fallback) {
+        n = Number(n);
+        if (!isFinite(n)) return fallback;
+        if (n < min) return min;
+        if (n > max) return max;
+        return Math.round(n);
+    }
+
+    function safeAccent(v) {
+        return /^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? String(v) : '';
+    }
+
+    /* Nur http(s)-URLs, ohne Zeichen, die aus url() ausbrechen koennen. */
+    function safeBgImage(v) {
+        var s = String(v || '').trim();
+        if (!/^https?:\/\/[A-Za-z0-9._~:/?#@!$&'*+,;=%-]{1,480}$/.test(s)) return '';
+        if (/[\s"'\\<>()]/.test(s)) return '';
+        return s;
+    }
+
     function apply(s) {
         var h = document.documentElement;
         if (PRESETS.indexOf(s.preset) === -1) s.preset = 'nebula';
+        if (s.mode !== 'dark' && s.mode !== 'light' && s.mode !== 'auto') s.mode = 'dark';
+        if (s.bg !== 'aurora' && s.bg !== 'plain' && s.bg !== 'image') s.bg = 'aurora';
+        var mods = (s.modules && typeof s.modules === 'object') ? s.modules : {};
         h.setAttribute('data-ptd', VERSION);
         h.setAttribute('data-ptd-preset', s.preset);
         h.setAttribute('data-ptd-mode', resolveMode(s.mode));
@@ -144,18 +167,20 @@
         h.setAttribute('data-ptd-bg', s.bg);
         h.setAttribute('data-ptd-fab', s.fab ? '1' : '0');
         h.setAttribute('data-ptd-rail', s.rail === 'mini' ? 'mini' : 'full');
-        h.setAttribute('data-ptd-shell', s.modules.rail ? 'rail' : 'top');
+        h.setAttribute('data-ptd-shell', mods.rail ? 'rail' : 'top');
 
         var st = h.style;
-        st.setProperty('--ptd-r', s.radius + 'px');
-        st.setProperty('--ptd-blur', s.blur + 'px');
-        if (s.accent) {
-            st.setProperty('--ptd-accent', s.accent);
+        st.setProperty('--ptd-r', clampNum(s.radius, 0, 26, 16) + 'px');
+        st.setProperty('--ptd-blur', clampNum(s.blur, 0, 40, 22) + 'px');
+        var accent = safeAccent(s.accent);
+        if (accent) {
+            st.setProperty('--ptd-accent', accent);
         } else {
             st.removeProperty('--ptd-accent');
         }
-        if (s.bg === 'image' && s.bgImage) {
-            st.setProperty('--ptd-bg-image', 'url("' + String(s.bgImage).replace(/["\\]/g, '') + '")');
+        var bgImage = s.bg === 'image' ? safeBgImage(s.bgImage) : '';
+        if (bgImage) {
+            st.setProperty('--ptd-bg-image', 'url("' + bgImage + '")');
         } else {
             st.removeProperty('--ptd-bg-image');
         }

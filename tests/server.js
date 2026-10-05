@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
+const { safeFile } = require('./safe-path');
 
 const ROOT = __dirname;
 const MOCK = path.join(ROOT, 'mock');
@@ -58,10 +59,11 @@ const srv = http.createServer((req, res) => {
     }
 
     let file;
-    if (p.startsWith('/assets/')) file = path.join(DIST, p.slice('/assets/'.length));
-    else if (p === '/mock-app.js' || p === '/pterodactyl.css' || p === '/adminlte.css') file = path.join(MOCK, p.slice(1));
+    if (p.startsWith('/assets/')) file = safeFile(DIST, p.slice('/assets/'.length));
+    else if (p === '/mock-app.js' || p === '/pterodactyl.css' || p === '/adminlte.css') file = safeFile(MOCK, p.slice(1));
     else if (p.startsWith('/admin')) file = path.join(MOCK, 'admin.html');
     else file = path.join(MOCK, 'index.html');
+    if (!file) { res.statusCode = 404; return res.end('not found'); }
 
     fs.readFile(file, (err, buf) => {
         if (err) { res.statusCode = 404; return res.end('not found'); }
