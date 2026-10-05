@@ -214,6 +214,135 @@ if ( PANEL="$state_panel"; SRC="$state_src"; write_state "2.0.0-abc123def0" ) >/
 fi
 grep -qx 'secret' "$outside/pwned" || fail "state symlink target overwritten"
 
+# Zwischenablage: 0700, selbes Dateisystem, nicht im Verzeichnis das www-data beschreiben kann.
+rm -rf "$panel/public/themes"
+mkdir -p "$panel/public/themes/nebula"
+printf 'old\n' > "$panel/public/themes/nebula/nebula.css"
+PANEL="$panel"
+if require_same_device / /proc; then fail "cross-device accepted"; fi
+require_same_device / /tmp || fail "same device rejected"
+stage_probe="$(open_private_stage "$panel/public/themes/nebula")"
+require_same_device "$stage_probe" "$panel/public/themes/nebula" || fail "stage left the destination filesystem"
+[ "$(stat -c '%a' "$stage_probe")" = "700" ] || fail "stage mode"
+case "$stage_probe" in
+    "$panel/public/themes/nebula"|"$panel/public/themes/nebula"/*) fail "stage created inside the writable directory" ;;
+esac
+close_private_stage "$stage_probe"
+chmod 777 "$panel/public/themes/nebula" "$panel/public/themes" "$panel/public" "$panel"
+stage_probe="$(open_private_stage "$panel/public/themes/nebula")"
+case "$stage_probe" in
+    "$panel/public/themes/nebula"|"$panel/public/themes/nebula"/*) fail "stage stayed inside a world-writable directory" ;;
+esac
+require_same_device "$stage_probe" "$panel/public/themes/nebula" || fail "world-writable dest changed filesystem"
+close_private_stage "$stage_probe"
+chmod 755 "$panel" "$panel/public" "$panel/public/themes" "$panel/public/themes/nebula"
+
+# cp in das Web-Verzeichnis: ein dort ausgetauschter Symlink darf root nicht nach aussen schreiben lassen.
+real_cp="$(command -v cp)"
+real_mv="$(command -v mv)"
+wrap="$(mktemp -d "$tmp/wrap.XXXXXX")"
+cat > "$wrap/cp" <<EOF
+#!/bin/bash
+dest="\${@: -1}"
+if [ -n "\${ATTACK_DIR:-}" ] && [ -n "\${ATTACK_OUT:-}" ]; then
+    case "\$dest" in
+        "\$ATTACK_DIR"|"\$ATTACK_DIR"/*)
+            rm -f -- "\$dest"
+            ln -s "\$ATTACK_OUT" "\$dest"
+            ;;
+    esac
+fi
+exec ${real_cp} "\$@"
+EOF
+cat > "$wrap/mv" <<EOF
+#!/bin/bash
+dest="\${@: -1}"
+if [ -n "\${ATTACK_PARENT:-}" ] && [ "\$dest" = "\${ATTACK_TARGET:-}" ]; then
+    rm -rf -- "\$ATTACK_PARENT"
+    ln -s "\$ATTACK_OUT" "\$ATTACK_PARENT"
+fi
+exec ${real_mv} "\$@"
+EOF
+chmod 755 "$wrap/cp" "$wrap/mv"
+printf 'payload\n' > "$tmp/payload"
+printf 'old\n' > "$panel/public/themes/nebula/nebula.css"
+(
+    # shellcheck disable=SC2030
+    PATH="$wrap:$PATH"
+    ATTACK_DIR="$panel/public/themes/nebula"
+    ATTACK_OUT="$outside/pwned"
+    export PATH ATTACK_DIR ATTACK_OUT
+    safe_install_file "$panel/public/themes/nebula/nebula.css" "$tmp/payload"
+)
+grep -qx 'payload' "$panel/public/themes/nebula/nebula.css" || fail "staged install missed the panel file"
+[ ! -L "$panel/public/themes/nebula/nebula.css" ] || fail "installed file is a symlink"
+grep -qx 'secret' "$outside/pwned" || fail "temp symlink swap wrote outside the panel"
+
+# Datei, deren Elternverzeichnis beim rename schon ein Symlink ist, wird wieder entfernt.
+leak_out="$(realpath -e "$(mktemp -d "$tmp/leak.XXXXXX")")"
+leak_panel="$(realpath -e "$(mktemp -d "$tmp/leakpanel.XXXXXX")")"
+mkdir -p "$leak_panel/public" "$leak_out/nebula"
+printf 'secret\n' > "$leak_out/pwned"
+printf 'payload\n' > "$leak_out/staged-src"
+ln -s "$leak_out" "$leak_panel/public/themes"
+PANEL="$leak_panel"
+staged_file="$(mktemp)"
+printf 'payload\n' > "$staged_file"
+if publish_file "$staged_file" "$leak_panel/public/themes/nebula/nebula.css" "public/themes/nebula/nebula.css"; then
+    fail "publish_file accepted a symlinked parent"
+fi
+if [ -e "$leak_out/nebula/nebula.css" ] || [ -e "$leak_out/nebula.css" ]; then
+    fail "publish_file left a file outside the panel"
+fi
+grep -qx 'secret' "$leak_out/pwned" || fail "publish_file clobbered the outside file"
+
+# Theme-Verzeichnis: mkdir/mv durch einen nachtraeglich gesetzten Symlink wird per rmdir entfernt.
+tree_panel="$(realpath -e "$(mktemp -d "$tmp/treepanel.XXXXXX")")"
+tree_out="$(realpath -e "$(mktemp -d "$tmp/treeout.XXXXXX")")"
+mkdir -p "$tree_panel/public"
+printf 'secret\n' > "$tree_out/pwned"
+ln -s "$tree_out" "$tree_panel/public/themes"
+PANEL="$tree_panel"
+tree_stage="$(mktemp -d "$tmp/treestage.XXXXXX")"
+mkdir -- "$tree_stage/nebula"
+if publish_tree_dir "$tree_stage/nebula" "$tree_panel/public/themes/nebula" "public/themes/nebula"; then
+    fail "publish_tree_dir accepted a symlinked parent"
+fi
+[ ! -d "$tree_out/nebula" ] || fail "theme dir leaked through a symlinked parent"
+grep -qx 'secret' "$tree_out/pwned" || fail "theme publish clobbered the outside file"
+
+# safe_reset_theme_dir selbst: mv sieht ein echtes public/themes, der Aufruf tauscht es vorher aus.
+reset_panel="$(realpath -e "$(mktemp -d "$tmp/resetpanel.XXXXXX")")"
+reset_out="$(realpath -e "$(mktemp -d "$tmp/resetout.XXXXXX")")"
+mkdir -p "$reset_panel/public/themes"
+printf 'secret\n' > "$reset_out/pwned"
+PANEL="$reset_panel"
+if (
+    # shellcheck disable=SC2030,SC2031
+    PATH="$wrap:$PATH"
+    ATTACK_PARENT="$reset_panel/public/themes"
+    ATTACK_TARGET="$reset_panel/public/themes/nebula"
+    ATTACK_OUT="$reset_out"
+    export PATH ATTACK_PARENT ATTACK_TARGET ATTACK_OUT
+    safe_reset_theme_dir
+) >/dev/null 2>&1; then
+    fail "safe_reset_theme_dir kept a directory created through a swapped parent"
+fi
+[ ! -d "$reset_out/nebula" ] || fail "safe_reset_theme_dir leaked the theme directory"
+grep -qx 'secret' "$reset_out/pwned" || fail "safe_reset_theme_dir clobbered the outside file"
+
+if [ "$(stat -c '%d' /)" != "$(stat -c '%d' /dev/shm)" ]; then
+    shm_file="$(mktemp --tmpdir=/dev/shm nebula-cross.XXXXXX)"
+    printf 'x\n' > "$shm_file"
+    PANEL="$panel"
+    mkdir -p "$panel/public/themes/nebula"
+    if publish_file "$shm_file" "$panel/public/themes/nebula/cross.css" "public/themes/nebula/cross.css"; then
+        fail "cross-device publish succeeded"
+    fi
+    [ ! -e "$panel/public/themes/nebula/cross.css" ] || fail "cross-device publish created the destination"
+    rm -f "$shm_file"
+fi
+
 bash -n "$ROOT/install.sh"
 bash -n "$ROOT/scripts/build.sh"
 bash -n "$ROOT/uninstall.sh"

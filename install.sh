@@ -554,10 +554,182 @@ under_panel() {
     esac
 }
 
-# Schreibt nur ueber eine neue Datei im bereits geprueften Verzeichnis und
-# ersetzt den Zieleintrag per rename, ohne einen Symlink zu folgen.
+# Gleicher Geraeteknoten: sonst wird mv zu Kopieren+Loeschen und die Race kehrt zurueck.
+require_same_device() {
+    local a b
+    a="$(stat -c '%d' "$1" 2>/dev/null || true)"
+    b="$(stat -c '%d' "$2" 2>/dev/null || true)"
+    [ -n "$a" ] || return 1
+    [ "$a" = "$b" ]
+}
+
+# Verzeichnis, in dem root (oder der aktuelle Benutzer) eine 0700-Zwischenablage
+# anlegen kann, die der Web-Benutzer nicht ersetzen kann. Nicht das Zielverzeichnis.
+stage_anchor() {
+    local dest_dir="$1" dev dir
+    dev="$(stat -c '%d' "$dest_dir" 2>/dev/null || true)"
+    [ -n "$dev" ] || return 1
+    dir="$(dirname "$dest_dir")"
+    while true; do
+        if stage_anchor_safe "$dir" "$dev"; then
+            printf '%s\n' "$dir"
+            return 0
+        fi
+        [ "$dir" = "/" ] && return 1
+        dir="$(dirname "$dir")"
+    done
+}
+
+stage_anchor_safe() {
+    local dir="$1" dev="$2" owner perms ow gw st
+    [ -d "$dir" ] || return 1
+    if [ -L "$dir" ]; then
+        return 1
+    fi
+    [ "$(stat -c '%d' "$dir" 2>/dev/null || true)" = "$dev" ] || return 1
+    owner="$(stat -c '%u' "$dir" 2>/dev/null || true)"
+    perms="$(stat -c '%A' "$dir" 2>/dev/null || true)"
+    [ "${#perms}" -eq 10 ] || return 1
+    gw="${perms:5:1}"
+    ow="${perms:8:1}"
+    st="${perms:9:1}"
+    if [ "$ow" = "w" ]; then
+        if [ "$(id -u)" != "0" ] || [ "$owner" != "0" ]; then
+            return 1
+        fi
+        if [ "$st" != "t" ] && [ "$st" != "T" ]; then
+            return 1
+        fi
+        return 0
+    fi
+    if [ "$gw" = "w" ]; then
+        return 1
+    fi
+    if [ "$owner" = "0" ] || [ "$owner" = "$(id -u)" ]; then
+        return 0
+    fi
+    return 1
+}
+
+open_private_stage() {
+    local dest_dir="$1" anchor stage
+    real_dir "$dest_dir" || die "Zielverzeichnis fehlt oder ist ein Symlink."
+    anchor="$(stage_anchor "$dest_dir")" || die "Keine sichere Zwischenablage auf demselben Dateisystem."
+    stage="$(mktemp -d -- "$anchor/.nebula-stage.XXXXXX")"
+    chmod 700 "$stage" || { rm -rf -- "$stage"; die "Zwischenablage nicht schuetzbar."; }
+    if [ "$(id -u)" = "0" ]; then
+        chown -h root:root "$stage" || { rm -rf -- "$stage"; die "Zwischenablage nicht schuetzbar."; }
+    fi
+    if [ -L "$stage" ] || [ ! -d "$stage" ]; then
+        rm -rf -- "$stage"
+        die "Zwischenablage ist ein Symlink."
+    fi
+    case "$stage" in
+        "$dest_dir"|"$dest_dir"/*)
+            rm -rf -- "$stage"
+            die "Zwischenablage liegt im beschreibbaren Zielverzeichnis."
+            ;;
+    esac
+    if ! require_same_device "$stage" "$dest_dir"; then
+        rm -rf -- "$stage"
+        die "Zwischenablage und Ziel liegen auf verschiedenen Dateisystemen."
+    fi
+    printf '%s\n' "$stage"
+}
+
+close_private_stage() {
+    local stage="$1"
+    [ -n "$stage" ] || return 0
+    case "$(basename "$stage")" in
+        .nebula-stage.*) rm -rf -- "$stage" ;;
+        *) die "Zwischenablage unerwartet: $stage" ;;
+    esac
+}
+
+# Ein einziges mv -T. Liegt das Ergebnis ausserhalb, wird die eben angelegte Datei entfernt.
+publish_file() {
+    local staged="$1" dest="$2" rel="$3" dir real
+    dir="$(dirname "$dest")"
+    if ! require_same_device "$(dirname "$staged")" "$dir"; then
+        return 1
+    fi
+    if [ -L "$dest" ]; then
+        return 1
+    fi
+    if ! mv -T "$staged" "$dest"; then
+        return 1
+    fi
+    if ! regular_file "$dest"; then
+        rm -f -- "$dest"
+        return 1
+    fi
+    real="$(realpath -e "$dest" 2>/dev/null || true)"
+    if ! under_panel "$real" || ! path_is_confined "$rel"; then
+        rm -f -- "$dest"
+        return 1
+    fi
+    return 0
+}
+
+# Leeres Verzeichnis per rename. Schlaegt die Pruefung fehl, wird es mit rmdir entfernt.
+publish_tree_dir() {
+    local staged="$1" dest="$2" rel="$3" dir
+    dir="$(dirname "$dest")"
+    if ! require_same_device "$staged" "$dir"; then
+        return 1
+    fi
+    if [ -e "$dest" ] || [ -L "$dest" ]; then
+        return 1
+    fi
+    if ! mv -T "$staged" "$dest"; then
+        return 1
+    fi
+    if ! path_is_confined "$rel" || ! real_dir "$dest"; then
+        rmdir -- "$dest" 2>/dev/null || true
+        return 1
+    fi
+    return 0
+}
+
+# Inhalt entsteht in einer 0700-Zwischenablage ausserhalb des Web-Verzeichnisses.
+# Danach genau ein mv -T ins Panel.
+stage_file_into() {
+    local dest="$1" srcf="$2" mode="$3" rel="$4" dir stage tmp
+    dir="$(dirname "$dest")"
+    real_dir "$dir" || die "Zielverzeichnis fehlt oder ist ein Symlink."
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] || die "Ungueltiger Dateimodus."
+    stage="$(open_private_stage "$dir")"
+    tmp="$stage/file"
+    if ! cp -- "$srcf" "$tmp"; then
+        close_private_stage "$stage"
+        die "Kopieren fehlgeschlagen."
+    fi
+    chmod "$mode" "$tmp" || { close_private_stage "$stage"; die "chmod fehlgeschlagen."; }
+    if [ "$(id -u)" = "0" ]; then
+        if [ -e "$dest" ] && [ ! -L "$dest" ]; then
+            chown -h --reference="$dest" "$tmp" || { close_private_stage "$stage"; die "Besitzer konnte nicht gesetzt werden."; }
+        else
+            chown -h root:root "$tmp" || { close_private_stage "$stage"; die "Besitzer konnte nicht gesetzt werden."; }
+        fi
+    fi
+    if [ -L "$dir" ] || [ -L "$dest" ]; then
+        close_private_stage "$stage"
+        die "Zielpfad wurde waehrend des Schreibens zu einem Symlink."
+    fi
+    if ! require_same_device "$stage" "$dir"; then
+        close_private_stage "$stage"
+        die "Zwischenablage und Ziel liegen auf verschiedenen Dateisystemen."
+    fi
+    if ! publish_file "$tmp" "$dest" "$rel"; then
+        close_private_stage "$stage"
+        die "Schreiben fehlgeschlagen: $rel"
+    fi
+    close_private_stage "$stage"
+}
+
+# Schreibt nur ueber eine Zwischenablage und ersetzt den Zieleintrag per rename.
 safe_install_file() {
-    local dest="$1" srcf="$2" rel dir tmp real parent_rel
+    local dest="$1" srcf="$2" rel dir parent_rel mode
     rel="${dest#"$PANEL"/}"
     [ "$dest" = "$PANEL/$rel" ] || die "Ziel ausserhalb des Panels."
     parent_rel="$(dirname "$rel")"
@@ -576,80 +748,25 @@ safe_install_file() {
     fi
     dir="$(dirname "$dest")"
     real_dir "$dir" || die "Zielverzeichnis fehlt oder ist ein Symlink: ${parent_rel:-.}"
-    tmp="$(mktemp "$dir/.nebula.XXXXXX")"
-    real="$(realpath -e "$tmp" 2>/dev/null || true)"
-    if ! under_panel "$real"; then
-        rm -f "$tmp"
-        die "Temporaere Datei liegt ausserhalb des Panels."
-    fi
-    if ! cp "$srcf" "$tmp"; then
-        rm -f "$tmp"
-        die "Kopieren fehlgeschlagen: $rel"
-    fi
-    local mode="${3:-644}"
-    [[ "$mode" =~ ^[0-7]{3,4}$ ]] || { rm -f "$tmp"; die "Ungueltiger Dateimodus."; }
-    chmod "$mode" "$tmp"
-    if [ -L "$dir" ] || [ -L "$dest" ]; then
-        rm -f "$tmp"
-        die "Zielpfad wurde waehrend des Schreibens zu einem Symlink: $rel"
-    fi
-    if ! mv -T "$tmp" "$dest"; then
-        rm -f "$tmp"
-        die "Schreiben fehlgeschlagen: $rel"
-    fi
-    regular_file "$dest" || die "Schreiben fehlgeschlagen: $rel"
-    real="$(realpath -e "$dest" 2>/dev/null || true)"
-    if ! under_panel "$real"; then
-        rm -f -- "$dest"
-        die "Geschriebene Datei liegt ausserhalb des Panels: $rel"
-    fi
+    mode="${3:-644}"
+    stage_file_into "$dest" "$srcf" "$mode" "$rel"
 }
 
 safe_replace_file() {
-    local dest="$1" srcf="$2" rel dir tmp real mode
+    local dest="$1" srcf="$2" rel dir mode
     rel="${dest#"$PANEL"/}"
     [ "$dest" = "$PANEL/$rel" ] || die "Ziel ausserhalb des Panels."
     require_confined "$rel"
     regular_file "$dest" || die "Zieldatei fehlt oder ist ein Symlink: $rel"
     dir="$(dirname "$dest")"
     real_dir "$dir" || die "Zielverzeichnis fehlt oder ist ein Symlink."
-    tmp="$(mktemp "$dir/.nebula.XXXXXX")"
-    real="$(realpath -e "$tmp" 2>/dev/null || true)"
-    if ! under_panel "$real"; then
-        rm -f "$tmp"
-        die "Temporaere Datei liegt ausserhalb des Panels."
-    fi
-    if ! cp "$srcf" "$tmp"; then
-        rm -f "$tmp"
-        die "Kopieren fehlgeschlagen: $rel"
-    fi
     mode="$(stat -c '%a' "$dest" 2>/dev/null || echo 644)"
     [[ "$mode" =~ ^[0-7]{3,4}$ ]] || mode="644"
-    chmod "$mode" "$tmp"
-    if [ "$(id -u)" = "0" ]; then
-        if ! chown --reference="$dest" "$tmp"; then
-            rm -f "$tmp"
-            die "Besitzer konnte nicht uebernommen werden: $rel"
-        fi
-    fi
-    if [ -L "$dir" ] || [ -L "$dest" ]; then
-        rm -f "$tmp"
-        die "Zielpfad wurde waehrend des Schreibens zu einem Symlink: $rel"
-    fi
-    if ! mv -T "$tmp" "$dest"; then
-        rm -f "$tmp"
-        die "Schreiben fehlgeschlagen: $rel"
-    fi
-    regular_file "$dest" || die "Schreiben fehlgeschlagen: $rel"
-    real="$(realpath -e "$dest" 2>/dev/null || true)"
-    if ! under_panel "$real"; then
-        rm -f -- "$dest"
-        die "Geschriebene Datei liegt ausserhalb des Panels: $rel"
-    fi
+    stage_file_into "$dest" "$srcf" "$mode" "$rel"
 }
 
 safe_reset_theme_dir() {
-    local parent_rel="public/themes" target="$PANEL/$THEME_REL"
+    local parent_rel="public/themes" target="$PANEL/$THEME_REL" stage newdir
     require_confined "$parent_rel"
     real_dir "$PANEL/$parent_rel" || die "public/themes fehlt oder ist ein Symlink."
     if [ -L "$target" ]; then
@@ -660,9 +777,26 @@ safe_reset_theme_dir() {
     elif [ -e "$target" ]; then
         rm -f -- "$target"
     fi
-    mkdir -- "$target"
-    require_confined "$THEME_REL"
-    chmod 755 "$target"
+    stage="$(open_private_stage "$PANEL/$parent_rel")"
+    newdir="$stage/$THEME_SLUG"
+    mkdir -- "$newdir"
+    chmod 755 "$newdir" || { close_private_stage "$stage"; die "chmod fehlgeschlagen."; }
+    if [ "$(id -u)" = "0" ]; then
+        chown -h "$(web_user):$(web_group)" "$newdir" || { close_private_stage "$stage"; die "Besitzer konnte nicht gesetzt werden."; }
+    fi
+    if ! real_dir "$PANEL/$parent_rel" || ! path_is_confined "$parent_rel"; then
+        close_private_stage "$stage"
+        die "public/themes wurde waehrend der Installation zu einem Symlink."
+    fi
+    if ! require_same_device "$stage" "$PANEL/$parent_rel"; then
+        close_private_stage "$stage"
+        die "Zwischenablage und Ziel liegen auf verschiedenen Dateisystemen."
+    fi
+    if ! publish_tree_dir "$newdir" "$target" "$THEME_REL"; then
+        close_private_stage "$stage"
+        die "Theme-Verzeichnis liegt ausserhalb des Panels oder ist ein Symlink."
+    fi
+    close_private_stage "$stage"
 }
 
 known_asset_name() {
