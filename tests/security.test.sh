@@ -62,6 +62,7 @@ got="$(eval "printf '%s' $q")"
 [ ! -e /tmp/pwn-nebula-audit ] && tick || fail "command substitution executed"
 
 tmp="$(mktemp -d)"
+export PTD_SEAL_JOURNAL="$tmp/seal.journal"
 mkdir -p "$tmp/in/safe"
 printf 'ok\n' > "$tmp/in/safe/a.txt"
 tar -czf "$tmp/ok.tgz" -C "$tmp/in" safe/a.txt
@@ -952,6 +953,108 @@ ln -s "$outside_mode" "$own_panel/public/themes"
 restore_sealed_dirs
 [ "$(stat -c '%a %u' "$outside_mode")" = "$before_out" ] && tick || fail "restore followed a swapped themes directory"
 [ -L "$own_panel/public/themes" ] && tick || fail "restore replaced the symlink with a directory"
+SEAL_RELS=()
+SEAL_DEVS=()
+SEAL_INOS=()
+SEAL_UIDS=()
+SEAL_GIDS=()
+SEAL_MODES=()
+SEAL_PANEL=""
+rm -f -- "$PTD_SEAL_JOURNAL"
+
+# R3-1: Abbruch nach Teil-Siegel. resources/views ist dann ein Symlink.
+# Das Zuruecksetzen darf T/templates nicht anfassen.
+part="$(mktemp -d "$tmp/part.XXXXXX")"
+part_t="$(mktemp -d "$tmp/part-t.XXXXXX")"
+mkdir -p "$part/resources/views/templates" "$part/resources/views/layouts" "$part/public/themes" \
+    "$part_t/templates" "$part_t/layouts"
+printf 'secret\n' > "$part_t/templates/hook"
+chmod 700 "$part_t" "$part_t/templates" "$part_t/layouts"
+chmod 701 "$part"
+chmod 750 "$part/resources"
+part_before="$(stat -c '%a %u' "$part_t/templates" "$part_t/layouts")"
+PANEL="$part"
+if (
+    SEAL_RELS=()
+    SEAL_DEVS=()
+    SEAL_INOS=()
+    SEAL_UIDS=()
+    SEAL_GIDS=()
+    SEAL_MODES=()
+    SEAL_PANEL=""
+    # shellcheck disable=SC2030
+    PTD_SEAL_JOURNAL="$part/seal.journal"
+    trap restore_sealed_dirs EXIT
+    PTD_SEAL_BREAK_AFTER=.
+    PTD_SEAL_BREAK_LINK=resources/views
+    PTD_SEAL_BREAK_TARGET="$part_t"
+    prepare_panel_writes
+) >/dev/null 2>&1; then
+    fail "partial seal accepted a swapped views directory"
+else
+    tick
+fi
+[ "$(stat -c '%a' "$part")" = "701" ] && tick || fail "panel mode after partial seal $(stat -c '%a' "$part")"
+[ "$(stat -c '%a' "$part/resources")" = "750" ] && tick || fail "resources mode after partial seal $(stat -c '%a' "$part/resources")"
+[ -L "$part/resources/views" ] && tick || fail "swapped views directory was replaced"
+[ "$(stat -c '%a %u' "$part_t/templates" "$part_t/layouts")" = "$part_before" ] && tick || fail "restore followed the swapped views symlink"
+grep -qx 'secret' "$part_t/templates/hook" && tick || fail "target template file changed"
+[ ! -e "$part/seal.journal" ] && tick || fail "seal journal survived a complete partial restore"
+
+# Falsche Inode: nicht chmod'en, Eintrag behalten.
+mis="$(mktemp -d "$tmp/mis.XXXXXX")"
+mkdir -p "$mis/resources/views/templates" "$mis/resources/views/layouts" "$mis/public/themes"
+chmod 701 "$mis"
+# shellcheck disable=SC2031
+saved_journal="$PTD_SEAL_JOURNAL"
+PTD_SEAL_JOURNAL="$tmp/mis.journal"
+PANEL="$mis"
+SEAL_RELS=()
+SEAL_DEVS=()
+SEAL_INOS=()
+SEAL_UIDS=()
+SEAL_GIDS=()
+SEAL_MODES=()
+prepare_panel_writes >/dev/null
+[ "$(stat -c '%a' "$mis")" = "755" ] && tick || fail "mismatch fixture was not sealed"
+awk -F'|' 'NR>1 { $3=1; print } NR==1 { print }' OFS='|' "$PTD_SEAL_JOURNAL" > "$tmp/mis.bad"
+mv -- "$tmp/mis.bad" "$PTD_SEAL_JOURNAL"
+chmod 600 "$PTD_SEAL_JOURNAL"
+SEAL_RELS=()
+SEAL_DEVS=()
+SEAL_INOS=()
+SEAL_UIDS=()
+SEAL_GIDS=()
+SEAL_MODES=()
+seal_journal_load
+restore_sealed_dirs
+[ "$(stat -c '%a' "$mis")" = "755" ] && tick || fail "inode mismatch still chmod'd the directory"
+[ -f "$PTD_SEAL_JOURNAL" ] && tick || fail "mismatched seal journal was dropped"
+SEAL_RELS=()
+SEAL_DEVS=()
+SEAL_INOS=()
+SEAL_UIDS=()
+SEAL_GIDS=()
+SEAL_MODES=()
+rm -f -- "$PTD_SEAL_JOURNAL"
+PTD_SEAL_JOURNAL="$saved_journal"
+
+# Falsche Pruefsumme nennt beide Werte. Leeres Build-Verzeichnis wird beim Abbruch entfernt.
+grep -q 'SHA-256 stimmt nicht (erwartet' "$ROOT/install.sh" && tick || fail "checksum mismatch message is not specific"
+grep -q "trap '' INT TERM HUP" "$ROOT/install.sh" && tick || fail "finish_exit does not ignore INT TERM HUP"
+bdir="$(mktemp -d "$tmp/build.XXXXXX")"
+printf 'x\n' > "$bdir/leftover"
+(
+    SEAL_RELS=()
+    SEAL_DEVS=()
+    SEAL_INOS=()
+    SEAL_UIDS=()
+    SEAL_GIDS=()
+    SEAL_MODES=()
+    BUILD_DIR="$bdir"
+    finish_exit
+)
+[ ! -e "$bdir" ] && tick || fail "build dir survived finish_exit"
 
 if sudo -n true 2>/dev/null && id www-data >/dev/null 2>&1; then
     sudo -n bash "$HERE/security-root.sh" "$ROOT" && tick || fail "root ownership, hardlink uid, or renameat2 race"

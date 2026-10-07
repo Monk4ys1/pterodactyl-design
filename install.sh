@@ -89,10 +89,14 @@ if [ -n "${PTD_BRANCH+x}" ]; then
     REF_EXPLICIT=1
     BRANCH_REQUESTED=1
 fi
-SEAL_PATHS=()
+SEAL_RELS=()
+SEAL_DEVS=()
+SEAL_INOS=()
 SEAL_UIDS=()
 SEAL_GIDS=()
 SEAL_MODES=()
+SEAL_PANEL=""
+BUILD_DIR=""
 ASSUME_YES=0
 DO_BACKUP=1
 DO_CLI=1
@@ -644,6 +648,154 @@ def unlink_child(directory, name):
         os.close(fd)
 
 
+def describe(st):
+    mode = format(stat.S_IMODE(st.st_mode), "o")
+    return "%s %s %s %s %s" % (st.st_dev, st.st_ino, st.st_uid, st.st_gid, mode)
+
+
+def go_writable(mode):
+    return bool(mode & 0o022)
+
+
+def open_chain(panel, rel):
+    fd = os.open(panel, os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | os.O_CLOEXEC)
+    if rel in ("", "."):
+        return fd
+    parts = [p for p in rel.split("/") if p != ""]
+    if not parts or any(p in (".", "..") or "\\" in p for p in parts):
+        os.close(fd)
+        fail("ungueltiger relativer pfad")
+    try:
+        for part in parts:
+            nxt = open_dir(fd, part)
+            os.close(fd)
+            fd = nxt
+        return fd
+    except Exception:
+        os.close(fd)
+        raise
+
+
+def probe_dir(panel, rel):
+    if rel in ("", "."):
+        fd = open_chain(panel, rel)
+        try:
+            st = os.fstat(fd)
+        finally:
+            os.close(fd)
+        if not stat.S_ISDIR(st.st_mode):
+            fail("kein verzeichnis")
+        sys.stdout.write("dir %s\n" % describe(st))
+        return
+    parent, name = walk(panel, rel)
+    try:
+        try:
+            st = os.lstat(name, dir_fd=parent)
+        except FileNotFoundError:
+            sys.stdout.write("missing\n")
+            return
+        if stat.S_ISLNK(st.st_mode):
+            fail("symlink")
+        if not stat.S_ISDIR(st.st_mode):
+            fail("kein verzeichnis")
+        fd = open_dir(parent, name)
+        try:
+            st = os.fstat(fd)
+        finally:
+            os.close(fd)
+        sys.stdout.write("dir %s\n" % describe(st))
+    finally:
+        os.close(parent)
+
+
+def seal_dir(panel, rel, dev, ino):
+    dev = int(dev)
+    ino = int(ino)
+    fd = open_chain(panel, rel)
+    try:
+        st = os.fstat(fd)
+        if st.st_dev != dev or st.st_ino != ino:
+            fail("identitaet")
+        if os.geteuid() == 0:
+            os.fchown(fd, 0, 0)
+            st = os.fstat(fd)
+            if st.st_dev != dev or st.st_ino != ino:
+                fail("identitaet")
+        os.fchmod(fd, 0o755)
+        st = os.fstat(fd)
+        if st.st_dev != dev or st.st_ino != ino:
+            fail("identitaet")
+        if os.geteuid() == 0 and st.st_uid != 0:
+            fail("nicht root")
+        if go_writable(stat.S_IMODE(st.st_mode)):
+            fail("beschreibbar")
+    finally:
+        os.close(fd)
+
+
+def restore_dir(panel, rel, dev, ino, uid, gid, mode):
+    dev = int(dev)
+    ino = int(ino)
+    uid = int(uid)
+    gid = int(gid)
+    mode_i = int(str(mode), 8)
+    if mode_i < 0 or mode_i > 0o7777:
+        fail("modus")
+    fd = open_chain(panel, rel)
+    try:
+        st = os.fstat(fd)
+        if st.st_dev != dev or st.st_ino != ino:
+            fail("identitaet")
+        os.fchmod(fd, mode_i)
+        st = os.fstat(fd)
+        if st.st_dev != dev or st.st_ino != ino:
+            fail("identitaet")
+        if os.geteuid() == 0:
+            os.fchown(fd, uid, gid)
+            st = os.fstat(fd)
+            if st.st_dev != dev or st.st_ino != ino:
+                fail("identitaet")
+    finally:
+        os.close(fd)
+
+
+def make_dir(panel, rel):
+    parent, name = walk(panel, rel)
+    try:
+        try:
+            st = os.lstat(name, dir_fd=parent)
+        except FileNotFoundError:
+            st = None
+        if st is not None:
+            fail("existiert bereits")
+        os.mkdir(name, 0o755, dir_fd=parent)
+        fd = open_dir(parent, name)
+        try:
+            if os.geteuid() == 0:
+                os.fchown(fd, 0, 0)
+            os.fchmod(fd, 0o755)
+            st = os.fstat(fd)
+            if os.geteuid() == 0 and st.st_uid != 0:
+                fail("nicht root")
+            if go_writable(stat.S_IMODE(st.st_mode)):
+                fail("beschreibbar")
+        finally:
+            os.close(fd)
+    finally:
+        os.close(parent)
+
+
+def fsync_path(path):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | os.O_CLOEXEC)
+    except OSError:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def parse_uids(text):
     out = set()
     for part in text.split(","):
@@ -673,6 +825,19 @@ def main():
             rename_into(sys.argv[2], sys.argv[3], sys.argv[4])
         elif cmd == "unlink-child" and len(sys.argv) == 4:
             unlink_child(sys.argv[2], sys.argv[3])
+        elif cmd == "probe-dir" and len(sys.argv) == 4:
+            probe_dir(sys.argv[2], sys.argv[3])
+        elif cmd == "seal-dir" and len(sys.argv) == 6:
+            seal_dir(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
+        elif cmd == "restore-dir" and len(sys.argv) == 9:
+            restore_dir(
+                sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5],
+                sys.argv[6], sys.argv[7], sys.argv[8],
+            )
+        elif cmd == "make-dir" and len(sys.argv) == 4:
+            make_dir(sys.argv[2], sys.argv[3])
+        elif cmd == "fsync-path" and len(sys.argv) == 3:
+            fsync_path(sys.argv[2])
         else:
             fail("unbekannter befehl")
     except SystemExit:
@@ -848,7 +1013,7 @@ resolve_source() {
         branches+=("$b")
     done < <(source_ref_list)
 
-    local url
+    local url checksum_rejected=0 checksum_got=""
     for b in "${branches[@]}"; do
         valid_ref "$b" || continue
         info "Lade Quelle von GitHub (Ref: $b) …"
@@ -861,10 +1026,18 @@ resolve_source() {
         for url in "${urls[@]}"; do
             rm -rf -- "${SRC_TMP:?}/"* 2>/dev/null || true
             rm -f -- "$SRC_TARBALL"
-            if curl -fsSL --tlsv1.2 --proto '=https' --proto-redir '=https' --max-redirs 2 --retry 2 --max-time 60 \
-                -o "$SRC_TARBALL" "$url" \
-                && { [ -z "$CHECKSUM" ] || checksum_matches "$SRC_TARBALL"; } \
-                && archive_is_safe "$SRC_TARBALL" \
+            if ! curl -fsSL --tlsv1.2 --proto '=https' --proto-redir '=https' --max-redirs 2 --retry 2 --max-time 60 \
+                -o "$SRC_TARBALL" "$url"; then
+                rm -f -- "$SRC_TARBALL"
+                continue
+            fi
+            if [ -n "$CHECKSUM" ] && ! checksum_matches "$SRC_TARBALL"; then
+                checksum_rejected=1
+                checksum_got="$(sha256_of "$SRC_TARBALL")"
+                rm -f -- "$SRC_TARBALL"
+                continue
+            fi
+            if archive_is_safe "$SRC_TARBALL" \
                 && tar -xzf "$SRC_TARBALL" -C "$SRC_TMP" --strip-components=1 --no-same-owner --no-same-permissions \
                 && [ -d "$SRC_TMP/theme/css" ] \
                 && [ ! -L "$SRC_TMP/theme" ] \
@@ -882,6 +1055,9 @@ resolve_source() {
         done
     done
 
+    if [ "$checksum_rejected" = "1" ]; then
+        die "SHA-256 stimmt nicht (erwartet $(sanitize_text "$CHECKSUM"), erhalten $(sanitize_text "${checksum_got:-unbekannt}")). Das Archiv wurde nicht entpackt."
+    fi
     if [ "${REF_EXPLICIT:-0}" = "1" ]; then
         die "Quelle fuer die angegebene Ref '$BRANCH' konnte nicht geladen werden. Kein Fallback."
     fi
@@ -1243,121 +1419,346 @@ preflight_anchors() {
     return 0
 }
 
-# chown -h, danach erneut pruefen, erst dann chmod. chmod folgt dem letzten Glied.
-claim_dir() {
-    local path="$1" create="${2:-0}"
-    if [ -L "$path" ]; then
-        die "Verzeichnis ist ein Symlink und wird nicht angefasst: $(sanitize_text "$path")"
-    fi
-    if [ -e "$path" ] && [ ! -d "$path" ]; then
-        die "Pfad ist kein Verzeichnis: $(sanitize_text "$path")"
-    fi
-    if [ ! -e "$path" ]; then
-        [ "$create" = "1" ] || die "Verzeichnis fehlt: $(sanitize_text "$path")"
-        [ "$DRY_RUN" = "1" ] && return 0
-        mkdir -m 0755 -- "$path" || die "Verzeichnis konnte nicht angelegt werden: $(sanitize_text "$path")"
-    fi
-    if [ -L "$path" ] || [ ! -d "$path" ]; then
-        die "Verzeichnis ist ein Symlink und wird nicht angefasst: $(sanitize_text "$path")"
-    fi
-    [ "$DRY_RUN" = "1" ] && return 0
-    if [ "$(id -u)" = "0" ]; then
-        chown -h root:root -- "$path" || die "Besitzer konnte nicht gesetzt werden: $(sanitize_text "$path")"
-    fi
-    if [ -L "$path" ] || [ ! -d "$path" ]; then
-        die "Verzeichnis wurde waehrend des Siegelns ersetzt: $(sanitize_text "$path")"
-    fi
-    chmod 0755 -- "$path" || die "Rechte konnten nicht gesetzt werden: $(sanitize_text "$path")"
-    if [ -L "$path" ] || [ ! -d "$path" ]; then
-        die "Verzeichnis wurde waehrend des Siegelns ersetzt: $(sanitize_text "$path")"
-    fi
-    if [ "$(id -u)" = "0" ]; then
-        [ "$(stat -c '%u' "$path")" = "0" ] || die "Verzeichnis gehoert nach dem Siegeln nicht root: $(sanitize_text "$path")"
-    fi
-    if mode_go_writable "$(stat -c '%a' "$path")"; then
-        die "Verzeichnis ist nach dem Siegeln noch beschreibbar: $(sanitize_text "$path")"
+# Siegel nur ueber O_NOFOLLOW-Kette ab dem Panel. chmod/chown per fd,
+# Identitaet (dev:ino) direkt vor der Aenderung. Erst nach erfolgreichem
+# claim merken. Ein Symlink in der Kette wird nicht verfolgt.
+seal_rel_ok() {
+    case "$1" in
+        .|resources|resources/views|resources/views/templates|resources/views/layouts|public|public/themes)
+            return 0
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+seal_show() {
+    local root="${SEAL_PANEL:-$PANEL}"
+    if [ "$1" = "." ]; then
+        printf '%s' "$root"
+    else
+        printf '%s' "$root/$1"
     fi
 }
 
-# Urspruenglichen Besitzer merken, bevor das Siegel root:root 0755 setzt.
-remember_dir() {
-    local path="$1"
-    [ -d "$path" ] && [ ! -L "$path" ] || return 0
-    SEAL_PATHS+=("$path")
-    SEAL_UIDS+=("$(stat -c '%u' "$path")")
-    SEAL_GIDS+=("$(stat -c '%g' "$path")")
-    SEAL_MODES+=("$(stat -c '%a' "$path")")
-}
-
-# Von unten nach oben: erst chmod, dann chown -h. Der Parent gehoert dabei
-# noch root, www-data kann den Eintrag also nicht dazwischen tauschen.
-restore_sealed_dirs() {
-    local i path mode uid gid n
-    n="${#SEAL_PATHS[@]}"
-    [ "$n" -gt 0 ] || return 0
-    for (( i=n-1; i>=0; i-- )); do
-        path="${SEAL_PATHS[$i]}"
-        mode="${SEAL_MODES[$i]}"
-        uid="${SEAL_UIDS[$i]}"
-        gid="${SEAL_GIDS[$i]}"
-        if [ -L "$path" ] || [ ! -d "$path" ]; then
-            warn "Verzeichnis nicht wiederhergestellt (kein echtes Verzeichnis): $(sanitize_text "$path")"
-            continue
-        fi
-        chmod "$mode" -- "$path" || warn "chmod fehlgeschlagen: $(sanitize_text "$path")"
-        if [ -L "$path" ] || [ ! -d "$path" ]; then
-            warn "Verzeichnis wurde vor dem chown ersetzt: $(sanitize_text "$path")"
-            continue
-        fi
-        if [ "$(id -u)" = "0" ]; then
-            chown -h "$uid:$gid" -- "$path" || warn "chown fehlgeschlagen: $(sanitize_text "$path")"
-        fi
-    done
-    SEAL_PATHS=()
+seal_arrays_clear() {
+    SEAL_RELS=()
+    SEAL_DEVS=()
+    SEAL_INOS=()
     SEAL_UIDS=()
     SEAL_GIDS=()
     SEAL_MODES=()
+    SEAL_PANEL=""
+}
+
+seal_pop() {
+    unset 'SEAL_RELS[-1]'
+    unset 'SEAL_DEVS[-1]'
+    unset 'SEAL_INOS[-1]'
+    unset 'SEAL_UIDS[-1]'
+    unset 'SEAL_GIDS[-1]'
+    unset 'SEAL_MODES[-1]'
+}
+
+# Root: /var/lib/nebula/seal.journal, Modus 0600. Tests setzen PTD_SEAL_JOURNAL.
+seal_journal_path() {
+    local p="${PTD_SEAL_JOURNAL:-}"
+    if [ -z "$p" ]; then
+        if [ "$(id -u)" != "0" ]; then
+            printf ''
+            return 0
+        fi
+        p=/var/lib/nebula/seal.journal
+    fi
+    case "$p" in
+        /*) ;;
+        *) printf '' ; return 1 ;;
+    esac
+    case "$p" in
+        *'|'|*$'\n'*|*' '*) printf '' ; return 1 ;;
+    esac
+    printf '%s' "$p"
+}
+
+seal_journal_dir_ok() {
+    local dir="$1" mode
+    [ -d "$dir" ] && [ ! -L "$dir" ] || return 1
+    mode="$(stat -c '%a' "$dir" 2>/dev/null || echo '')"
+    mode_go_writable "$mode" && return 1
+    if [ "$(id -u)" = "0" ]; then
+        [ "$(stat -c '%u' "$dir" 2>/dev/null || echo '')" = "0" ] || return 1
+    fi
+    return 0
+}
+
+seal_journal_prepare_dir() {
+    local path dir parent
+    path="$(seal_journal_path)" || return 1
+    [ -n "$path" ] || return 0
+    dir="$(dirname "$path")"
+    parent="$(dirname "$dir")"
+    if [ ! -d "$dir" ]; then
+        seal_journal_dir_ok "$parent" || return 1
+        mkdir -m 0755 -- "$dir" || return 1
+        if [ "$(id -u)" = "0" ]; then
+            chown root:root -- "$dir" || return 1
+            chmod 0755 -- "$dir" || return 1
+        fi
+    fi
+    seal_journal_dir_ok "$dir"
+}
+
+seal_journal_save() {
+    local path dir tmp i
+    path="$(seal_journal_path)" || return 1
+    [ -n "$path" ] || return 0
+    if [ "${#SEAL_RELS[@]}" -eq 0 ]; then
+        seal_journal_delete
+        return 0
+    fi
+    seal_journal_prepare_dir || return 1
+    dir="$(dirname "$path")"
+    tmp="$(mktemp "$dir/.seal.XXXXXX")" || return 1
+    chmod 600 "$tmp" || { rm -f -- "$tmp"; return 1; }
+    {
+        printf 'panel|%s\n' "${SEAL_PANEL:-$PANEL}"
+        for i in "${!SEAL_RELS[@]}"; do
+            printf '%s|%s|%s|%s|%s|%s\n' \
+                "${SEAL_RELS[$i]}" "${SEAL_DEVS[$i]}" "${SEAL_INOS[$i]}" \
+                "${SEAL_UIDS[$i]}" "${SEAL_GIDS[$i]}" "${SEAL_MODES[$i]}"
+        done
+    } > "$tmp" || { rm -f -- "$tmp"; return 1; }
+    if [ "$(id -u)" = "0" ]; then
+        chown root:root -- "$tmp" || { rm -f -- "$tmp"; return 1; }
+    fi
+    fd_py fsync-path "$tmp" || { rm -f -- "$tmp"; return 1; }
+    fd_py rename-into "$dir" "$(basename "$path")" "$tmp" || { rm -f -- "$tmp"; return 1; }
+    chmod 600 -- "$path" || return 1
+    fd_py fsync-path "$dir" || return 1
+}
+
+seal_journal_delete() {
+    local path dir
+    path="$(seal_journal_path)" || return 1
+    [ -n "$path" ] || return 0
+    [ -e "$path" ] || [ -L "$path" ] || return 0
+    dir="$(dirname "$path")"
+    fd_py unlink-child "$dir" "$(basename "$path")" || return 1
+}
+
+seal_journal_load() {
+    local path line rel dev ino uid gid mode jpanel
+    seal_arrays_clear
+    path="$(seal_journal_path)" || return 1
+    [ -n "$path" ] || return 0
+    [ -e "$path" ] || return 0
+    [ -f "$path" ] && [ ! -L "$path" ] || return 1
+    [ "$(stat -c '%a' "$path" 2>/dev/null || echo '')" = "600" ] || return 1
+    if [ "$(id -u)" = "0" ] && [ "$(stat -c '%u' "$path" 2>/dev/null || echo '')" != "0" ]; then
+        return 1
+    fi
+    jpanel=""
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ -n "$line" ] || continue
+        case "$line" in
+            panel\|*)
+                [ -z "$jpanel" ] || return 1
+                jpanel="${line#panel|}"
+                ;;
+            *)
+                IFS='|' read -r rel dev ino uid gid mode <<<"$line"
+                seal_rel_ok "$rel" || return 1
+                [[ "$dev" =~ ^[0-9]+$ && "$ino" =~ ^[0-9]+$ && "$uid" =~ ^[0-9]+$ && "$gid" =~ ^[0-9]+$ && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+                SEAL_RELS+=("$rel")
+                SEAL_DEVS+=("$dev")
+                SEAL_INOS+=("$ino")
+                SEAL_UIDS+=("$uid")
+                SEAL_GIDS+=("$gid")
+                SEAL_MODES+=("$mode")
+                ;;
+        esac
+    done < "$path"
+    [ -n "$jpanel" ] || return 1
+    SEAL_PANEL="$jpanel"
+    if [ "$jpanel" != "$PANEL" ]; then
+        warn "Siegel-Protokoll gehoert zu $(sanitize_text "$jpanel"), nicht zu diesem Panel."
+        seal_arrays_clear
+        return 2
+    fi
+    return 0
+}
+
+# Von unten nach oben, nur wenn dev:ino und die Kette ab dem Panel noch stimmen.
+# Sonst warnen und den Eintrag behalten. chmod, dann chown, beides per fd.
+restore_sealed_dirs() {
+    local i n rel dev ino uid gid mode
+    local -a keep_rels=() keep_devs=() keep_inos=() keep_uids=() keep_gids=() keep_modes=()
+    n="${#SEAL_RELS[@]}"
+    [ "$n" -gt 0 ] || return 0
+    for (( i=n-1; i>=0; i-- )); do
+        rel="${SEAL_RELS[$i]}"
+        dev="${SEAL_DEVS[$i]}"
+        ino="${SEAL_INOS[$i]}"
+        uid="${SEAL_UIDS[$i]}"
+        gid="${SEAL_GIDS[$i]}"
+        mode="${SEAL_MODES[$i]}"
+        if fd_py restore-dir "${SEAL_PANEL:-$PANEL}" "$rel" "$dev" "$ino" "$uid" "$gid" "$mode"; then
+            continue
+        fi
+        warn "Verzeichnis nicht wiederhergestellt (Kette oder Identitaet): $(sanitize_text "$(seal_show "$rel")")"
+        keep_rels+=("$rel")
+        keep_devs+=("$dev")
+        keep_inos+=("$ino")
+        keep_uids+=("$uid")
+        keep_gids+=("$gid")
+        keep_modes+=("$mode")
+    done
+    if [ "${#keep_rels[@]}" -eq 0 ]; then
+        seal_arrays_clear
+        seal_journal_delete || warn "Siegel-Protokoll konnte nicht entfernt werden."
+        return 0
+    fi
+    # Der Durchlauf haengt Fehlschlaege von unten nach oben an. Zurueck auf
+    # Wurzel-zuerst, damit der naechste Restore wieder beim Kind beginnt.
+    SEAL_RELS=()
+    SEAL_DEVS=()
+    SEAL_INOS=()
+    SEAL_UIDS=()
+    SEAL_GIDS=()
+    SEAL_MODES=()
+    for (( i=${#keep_rels[@]}-1; i>=0; i-- )); do
+        SEAL_RELS+=("${keep_rels[$i]}")
+        SEAL_DEVS+=("${keep_devs[$i]}")
+        SEAL_INOS+=("${keep_inos[$i]}")
+        SEAL_UIDS+=("${keep_uids[$i]}")
+        SEAL_GIDS+=("${keep_gids[$i]}")
+        SEAL_MODES+=("${keep_modes[$i]}")
+    done
+    seal_journal_save || warn "Siegel-Protokoll konnte nicht aktualisiert werden."
 }
 
 finish_exit() {
     local rc=$?
+    trap '' INT TERM HUP
     set +e
     restore_sealed_dirs
+    if [ -n "${BUILD_DIR:-}" ] && [ ! -L "${BUILD_DIR}" ] && [ -d "${BUILD_DIR}" ]; then
+        rm -rf -- "${BUILD_DIR}"
+    fi
+    BUILD_DIR=""
     cleanup_source
     exit "$rc"
 }
 
-# Bei jedem Install, Update, Uninstall und Restore. Pterodactyl-Upgrades setzen
-# chown -R www-data auf den Baum; www-data koennte sonst resources oder public
-# gegen einen Symlink tauschen. storage und bootstrap/cache bleiben unberuehrt.
-# Nach dem Lauf stellt der Exit-Trap Besitzer, Gruppe und Modus wieder her,
-# damit php artisan p:upgrade nicht root als Besitzer uebernimmt.
+recover_seal_journal() {
+    local path rc
+    path="$(seal_journal_path)" || die "Siegel-Protokoll-Pfad ungueltig."
+    [ -n "$path" ] || return 0
+    [ -e "$path" ] || return 0
+    set +e
+    seal_journal_load
+    rc=$?
+    set -e
+    if [ "$rc" -eq 2 ]; then
+        die "Siegel-Protokoll gehoert zu einem anderen Panel und bleibt liegen."
+    fi
+    if [ "$rc" -ne 0 ]; then
+        seal_arrays_clear
+        die "Siegel-Protokoll ist beschaedigt und wird nicht angewendet: $(sanitize_text "$path")"
+    fi
+    [ "${#SEAL_RELS[@]}" -gt 0 ] || return 0
+    restore_sealed_dirs
+    if [ "${#SEAL_RELS[@]}" -gt 0 ]; then
+        die "Vorheriges Siegel konnte nicht sicher zurueckgesetzt werden. Nichts weiter veraendert. Protokoll: $(sanitize_text "$path")"
+    fi
+}
+
+# Stat direkt vor dem Siegel. Ins Protokoll, bevor chmod/chown. Erst danach
+# gilt der Eintrag als gemerkt. Schlaegt die Kette fehl, wird nichts gesetzt.
+claim_dir() {
+    local rel="$1" create="${2:-0}" probe kind dev ino uid gid mode
+    seal_rel_ok "$rel" || die "Interner Siegelpfad ungueltig."
+    if [ -z "${SEAL_PANEL:-}" ]; then
+        SEAL_PANEL="$PANEL"
+    elif [ "$SEAL_PANEL" != "$PANEL" ]; then
+        die "Siegel gehoert zu einem anderen Panel."
+    fi
+    if ! probe="$(fd_py probe-dir "$PANEL" "$rel")"; then
+        die "Verzeichnis ist kein echtes Verzeichnis oder die Kette enthaelt einen Symlink: $(sanitize_text "$(seal_show "$rel")")"
+    fi
+    kind="${probe%% *}"
+    if [ "$kind" = "missing" ]; then
+        [ "$create" = "1" ] || die "Verzeichnis fehlt: $(sanitize_text "$(seal_show "$rel")")"
+        [ "$DRY_RUN" = "1" ] && return 0
+        fd_py make-dir "$PANEL" "$rel" || die "Verzeichnis konnte nicht angelegt werden: $(sanitize_text "$(seal_show "$rel")")"
+        return 0
+    fi
+    [ "$kind" = "dir" ] || die "Verzeichnis nicht lesbar: $(sanitize_text "$(seal_show "$rel")")"
+    read -r kind dev ino uid gid mode <<<"$probe"
+    [[ "$dev" =~ ^[0-9]+$ && "$ino" =~ ^[0-9]+$ && "$uid" =~ ^[0-9]+$ && "$gid" =~ ^[0-9]+$ && "$mode" =~ ^[0-7]{3,4}$ ]] \
+        || die "Siegel-Identitaet ungueltig: $(sanitize_text "$(seal_show "$rel")")"
+    [ "$DRY_RUN" = "1" ] && return 0
+    SEAL_RELS+=("$rel")
+    SEAL_DEVS+=("$dev")
+    SEAL_INOS+=("$ino")
+    SEAL_UIDS+=("$uid")
+    SEAL_GIDS+=("$gid")
+    SEAL_MODES+=("$mode")
+    if ! seal_journal_save; then
+        seal_pop
+        die "Siegel-Protokoll nicht schreibbar."
+    fi
+    if ! fd_py seal-dir "$PANEL" "$rel" "$dev" "$ino"; then
+        die "Verzeichnis wurde waehrend des Siegelns ersetzt: $(sanitize_text "$(seal_show "$rel")")"
+    fi
+}
+
+# Nur im Selbsttest: nach einem Teil-Siegel einen Kindpfad gegen einen Symlink tauschen.
+maybe_seal_break() {
+    local rel="$1" link parent base
+    [ "${PTD_SELFTEST:-}" = "1" ] || return 0
+    [ "${PTD_SEAL_BREAK_AFTER:-}" = "$rel" ] || return 0
+    seal_rel_ok "${PTD_SEAL_BREAK_LINK:-}" || return 0
+    [ "${PTD_SEAL_BREAK_LINK}" != "." ] || return 0
+    [ -d "${PTD_SEAL_BREAK_TARGET:-}" ] && [ ! -L "${PTD_SEAL_BREAK_TARGET}" ] || return 0
+    case "${PTD_SEAL_BREAK_TARGET}" in
+        "$PANEL"|"$PANEL"/*) return 0 ;;
+    esac
+    link="$PANEL/${PTD_SEAL_BREAK_LINK}"
+    [ -d "$link" ] && [ ! -L "$link" ] || return 0
+    parent="$(dirname "$link")"
+    base="$(basename "$link")"
+    mv -- "$link" "$parent/.$base.ptd-real"
+    ln -s -- "${PTD_SEAL_BREAK_TARGET}" "$link"
+}
+
+# Bei jedem Install, Update, Uninstall und Restore. Das Siegel gilt nur fuer
+# diesen Lauf. storage und bootstrap/cache bleiben unberuehrt. Ein hart
+# abgebrochener Lauf hinterlaesst das Protokoll; der naechste Lauf setzt
+# zuerst zurueck oder warnt, wenn die Inode nicht mehr dieselbe ist.
 prepare_panel_writes() {
+    local -a rels=(. resources resources/views resources/views/templates resources/views/layouts public public/themes)
+    local -a creates=(0 0 0 0 1 0 1)
+    local i
     require_python3
     [ -n "${PANEL:-}" ] || die "Panel-Pfad fehlt."
     if [ ! -d "$PANEL" ] || [ -L "$PANEL" ]; then
         die "Panel-Pfad ist kein Verzeichnis."
     fi
-    preflight_anchors || die "Keine sichere Zwischenablage auf demselben Dateisystem. Abbruch vor der ersten Aenderung."
-    if [ "${#SEAL_PATHS[@]}" -eq 0 ]; then
-        remember_dir "$PANEL"
-        remember_dir "$PANEL/resources"
-        remember_dir "$PANEL/resources/views"
-        remember_dir "$PANEL/resources/views/templates"
-        remember_dir "$PANEL/resources/views/layouts"
-        remember_dir "$PANEL/public"
-        remember_dir "$PANEL/public/themes"
+    case "$PANEL" in
+        *'|'|*$'\n'*) die "Panel-Pfad enthaelt ungueltige Zeichen." ;;
+    esac
+    if [ "${#SEAL_RELS[@]}" -gt 0 ] && [ "${SEAL_PANEL:-}" = "$PANEL" ]; then
+        return 0
     fi
+    recover_seal_journal
+    preflight_anchors || die "Keine sichere Zwischenablage auf demselben Dateisystem. Abbruch vor der ersten Aenderung."
     if [ "${PTD_SELFTEST:-}" != "1" ]; then
         trap finish_exit EXIT
     fi
-    claim_dir "$PANEL" 0
-    claim_dir "$PANEL/resources" 0
-    claim_dir "$PANEL/resources/views" 0
-    claim_dir "$PANEL/resources/views/templates" 0
-    claim_dir "$PANEL/resources/views/layouts" 1
-    claim_dir "$PANEL/public" 0
-    claim_dir "$PANEL/public/themes" 1
+    for i in "${!rels[@]}"; do
+        claim_dir "${rels[$i]}" "${creates[$i]}"
+        maybe_seal_break "${rels[$i]}"
+    done
     if [ "$DRY_RUN" = "1" ]; then
         return 0
     fi
@@ -2162,6 +2563,7 @@ do_install() {
     step "3/6  Theme bauen"
     local build_dir asset
     build_dir="$(private_workdir)"
+    BUILD_DIR="$build_dir"
     bash "$SRC/scripts/build.sh" "$build_dir" >/dev/null
     asset="$(cat "$build_dir/ASSET_VERSION")"
     ok "Bundles erstellt (Asset-Version $asset)"
@@ -2196,7 +2598,8 @@ do_install() {
     clear_views
     write_state "$asset"
     install_cli
-    rm -rf "$build_dir"
+    rm -rf -- "$build_dir"
+    BUILD_DIR=""
     restore_sealed_dirs
 
     printf '\n  %s%s ist aktiv.%s\n\n' "$C_OK$C_B" "$THEME_NAME" "$C_RESET"

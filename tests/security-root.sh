@@ -20,6 +20,7 @@ as_www() {
 }
 
 tmp="$(mktemp -d)"
+export PTD_SEAL_JOURNAL="$tmp/seal.journal"
 race_pid=""
 cleanup() {
     if [ -n "$race_pid" ]; then
@@ -45,7 +46,16 @@ PANEL="$panel"
 prepare_panel_writes >/dev/null
 [ "$(stat -c '%a' "$panel/public")" = "755" ] || fail "seal mode $(stat -c '%a' "$panel/public")"
 [ "$(stat -c '%u' "$panel/public")" = "0" ] || fail "seal uid"
-restore_sealed_dirs
+[ -f "$PTD_SEAL_JOURNAL" ] || fail "seal journal was not written"
+# Naechster Lauf ohne Speicher: nur das Protokoll setzt Besitzer und Modus zurueck.
+SEAL_RELS=()
+SEAL_DEVS=()
+SEAL_INOS=()
+SEAL_UIDS=()
+SEAL_GIDS=()
+SEAL_MODES=()
+recover_seal_journal
+[ ! -e "$PTD_SEAL_JOURNAL" ] || fail "seal journal survived recovery"
 [ "$(stat -c '%a' "$panel/public")" = "750" ] || fail "public mode $(stat -c '%a' "$panel/public")"
 [ "$(stat -c '%u:%g' "$panel/public")" = "0:$gid" ] || fail "public owner $(stat -c '%u:%g' "$panel/public")"
 [ "$(stat -c '%a' "$panel/resources")" = "751" ] || fail "resources mode $(stat -c '%a' "$panel/resources")"

@@ -72,7 +72,10 @@ des Panels, `resources`, `resources/views`, `resources/views/templates`,
 `resources/views/layouts`, `public` und `public/themes` vorübergehend
 `root:root` `0755`, damit der Web-Benutzer sie nicht gegen einen Symlink
 tauschen kann. Danach — auch wenn der Lauf abbricht — stellt der Installer
-Besitzer, Gruppe und Modus wieder her. `storage/` und `bootstrap/cache` bleiben
+Besitzer, Gruppe und Modus wieder her, aber nur wenn Gerät und Inode
+noch dieselben sind und keine Komponente auf dem Weg ein Symlink ist.
+Ein harter Abbruch hinterlässt `/var/lib/nebula/seal.journal` (root,
+Modus 0600); der nächste Lauf setzt daraus zurück oder warnt. `storage/` und `bootstrap/cache` bleiben
 unberührt. Es wird `python3` benötigt (`apt install python3`).
 
 Ein anschließendes Panel-Upgrade soll den Web-Benutzer nennen, sonst schlägt
