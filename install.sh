@@ -26,6 +26,14 @@
 set -euo pipefail
 umask 022
 
+# CWD darf nicht auf sys.path liegen, wenn spaeter ctypes importiert wird.
+_ptd_src="${BASH_SOURCE[0]}"
+_ptd_dir="$(dirname "$_ptd_src")"
+if _ptd_abs="$(cd "$_ptd_dir" 2>/dev/null && pwd)"; then
+    _ptd_src="${_ptd_abs}/$(basename "$_ptd_src")"
+fi
+cd / || exit 1
+
 REPO="Monk4ys1/pterodactyl-design"
 THEME_SLUG="nebula"
 THEME_NAME="Nebula"
@@ -74,11 +82,17 @@ ACTION="install"
 PANEL=""
 REF_EXPLICIT=0
 TAG_REQUESTED=0
+BRANCH_REQUESTED=0
 BRANCH="$DEFAULT_BRANCH"
 if [ -n "${PTD_BRANCH+x}" ]; then
     BRANCH="$PTD_BRANCH"
     REF_EXPLICIT=1
+    BRANCH_REQUESTED=1
 fi
+SEAL_PATHS=()
+SEAL_UIDS=()
+SEAL_GIDS=()
+SEAL_MODES=()
 ASSUME_YES=0
 DO_BACKUP=1
 DO_CLI=1
@@ -358,12 +372,19 @@ while [ $# -gt 0 ]; do
         --restore)    ACTION="restore" ;;
         --path)       PANEL="${2:-}"; shift ;;
         --path=*)     PANEL="${1#*=}" ;;
-        --branch)     BRANCH="${2:-}"; REF_EXPLICIT=1; shift ;;
-        --branch=*)   BRANCH="${1#*=}"; REF_EXPLICIT=1 ;;
+        --branch)     BRANCH="${2:-}"; REF_EXPLICIT=1; BRANCH_REQUESTED=1; shift ;;
+        --branch=*)   BRANCH="${1#*=}"; REF_EXPLICIT=1; BRANCH_REQUESTED=1 ;;
         --tag)        BRANCH="${2:-}"; REF_EXPLICIT=1; TAG_REQUESTED=1; shift ;;
         --tag=*)      BRANCH="${1#*=}"; REF_EXPLICIT=1; TAG_REQUESTED=1 ;;
-        --checksum)   CHECKSUM="${2:-}"; shift ;;
-        --checksum=*) CHECKSUM="${1#*=}" ;;
+        --checksum)
+            CHECKSUM="${2:-}"
+            shift
+            [ -n "$CHECKSUM" ] || die "--checksum braucht eine SHA-256-Summe (64 Hex-Zeichen)."
+            ;;
+        --checksum=*)
+            CHECKSUM="${1#*=}"
+            [ -n "$CHECKSUM" ] || die "--checksum braucht eine SHA-256-Summe (64 Hex-Zeichen)."
+            ;;
         --yes|-y)     ASSUME_YES=1 ;;
         --no-backup)  DO_BACKUP=0 ;;
         --no-cli)     DO_CLI=0 ;;
@@ -415,13 +436,22 @@ python3_bin() {
     return 1
 }
 
+require_python3() {
+    python3_bin >/dev/null || die "python3 fehlt. Bitte installieren: apt install python3"
+}
+
 # rename/unlink/copy ueber Verzeichnis-Dateideskriptoren und O_NOFOLLOW.
 # mv, rm und cp loesen den Pfad danach neu auf; ein getauschter Parent
 # wuerde sonst in ein fremdes Verzeichnis schreiben oder es loeschen.
+# -I und eine leere Umgebung: kein ctypes.py aus CWD oder PYTHONPATH.
 fd_py() {
     local py
     py="$(python3_bin)" || die "python3 fehlt. Bitte installieren: apt install python3"
-    "$py" - "$@" <<'PY'
+    (
+        cd /
+        # shellcheck disable=SC2093
+        exec /usr/bin/env -i PATH="/usr/bin:/bin" "$py" -I - "$@"
+    ) <<'PY'
 import ctypes
 import os
 import stat
@@ -488,12 +518,24 @@ def rm_at(parent, name):
     unlink_at(parent, name, AT_REMOVEDIR)
 
 
-def copy_from(parent, name, dest):
+def copy_from(parent, name, dest, allowed):
     safe_name(name)
     st = os.lstat(name, dir_fd=parent)
     if not stat.S_ISREG(st.st_mode):
         fail("keine regulaere datei")
+    if st.st_nlink != 1:
+        fail("hardlink")
+    if st.st_uid not in allowed:
+        fail("uid")
     src = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+    try:
+        fst = os.fstat(src)
+    except OSError:
+        os.close(src)
+        raise
+    if fst.st_nlink != 1 or fst.st_ino != st.st_ino or fst.st_uid != st.st_uid:
+        os.close(src)
+        fail("datei geaendert")
     try:
         out = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
         try:
@@ -539,7 +581,7 @@ def unlink_rel(root, rel):
         os.close(parent)
 
 
-def snapshot(root, rel, dest_root):
+def snapshot(root, rel, dest_root, allowed):
     parent, name = walk(root, rel)
     try:
         st = os.lstat(name, dir_fd=parent)
@@ -557,12 +599,12 @@ def snapshot(root, rel, dest_root):
                     est = os.lstat(entry, dir_fd=fd)
                     if stat.S_ISLNK(est.st_mode) or not stat.S_ISREG(est.st_mode):
                         fail("unsicherer verzeichniseintrag")
-                    copy_from(fd, entry, os.path.join(dest, entry))
+                    copy_from(fd, entry, os.path.join(dest, entry), allowed)
             finally:
                 os.close(fd)
         elif stat.S_ISREG(st.st_mode):
             os.makedirs(os.path.dirname(dest), 0o700)
-            copy_from(parent, name, dest)
+            copy_from(parent, name, dest, allowed)
         else:
             fail("weder datei noch verzeichnis")
     finally:
@@ -602,6 +644,15 @@ def unlink_child(directory, name):
         os.close(fd)
 
 
+def parse_uids(text):
+    out = set()
+    for part in text.split(","):
+        part = part.strip()
+        if part.isdigit():
+            out.add(int(part))
+    return out
+
+
 def main():
     if len(sys.argv) < 2:
         fail("befehl fehlt")
@@ -613,8 +664,11 @@ def main():
             publish(sys.argv[2], sys.argv[3], sys.argv[4], "dir")
         elif cmd == "unlink" and len(sys.argv) == 4:
             unlink_rel(sys.argv[2], sys.argv[3])
-        elif cmd == "snapshot" and len(sys.argv) == 5:
-            snapshot(sys.argv[2], sys.argv[3], sys.argv[4])
+        elif cmd == "snapshot" and len(sys.argv) in (5, 6):
+            allowed = {os.geteuid(), 0}
+            if len(sys.argv) == 6:
+                allowed |= parse_uids(sys.argv[5])
+            snapshot(sys.argv[2], sys.argv[3], sys.argv[4], allowed)
         elif cmd == "rename-into" and len(sys.argv) == 5:
             rename_into(sys.argv[2], sys.argv[3], sys.argv[4])
         elif cmd == "unlink-child" and len(sys.argv) == 4:
@@ -634,8 +688,8 @@ PY
 
 installer_dir() {
     local dir
-    dir="$(dirname "${BASH_SOURCE[0]}")"
-    if dir="$(cd "$dir" 2>/dev/null && pwd)"; then
+    dir="$(dirname "$_ptd_src")"
+    if [ -d "$dir" ] && [ ! -L "$dir" ]; then
         printf '%s' "$dir"
         return 0
     fi
@@ -728,7 +782,19 @@ checksum_matches() {
 # -----------------------------------------------------------------------------
 # Quelle bereitstellen (lokal oder von GitHub)
 # -----------------------------------------------------------------------------
+# Update mit Summe, aber ohne Tag und ohne Branch, wuerde die Summe gegen
+# den wandernden Standardbranch pruefen und danach nie wieder gelingen.
+refuse_checksum_without_ref() {
+    [ "${ACTION:-}" = "update" ] || return 0
+    [ -n "${CHECKSUM:-}" ] || return 0
+    if [ "${TAG_REQUESTED:-0}" = "1" ] || [ "${BRANCH_REQUESTED:-0}" = "1" ]; then
+        return 0
+    fi
+    die "Eine Pruefsumme ohne --tag oder --branch kann nebula update nicht zuordnen: der Standardbranch aendert sich, die Summe nicht. Bitte --tag <name> --checksum <summe> angeben."
+}
+
 resolve_source() {
+    require_python3
     local here
     here="$(installer_dir)"
 
@@ -742,20 +808,28 @@ resolve_source() {
             die "--tag und --checksum gelten nur fuer den Download von GitHub. Aus einem lokalen Verzeichnis wuerden sie still ignoriert und werden deshalb abgelehnt."
         fi
         SRC="$here"
-        if [ "$(id -u)" = "0" ] && [ "$DO_CLI" = "1" ]; then
-            tree_owned_by_root "$SRC" || die "Lokale Quelle gehoert nicht root oder ist beschreibbar. Vorher: chown -R root:root <quelle>"
+        if [ "$(id -u)" = "0" ]; then
+            tree_owned_by_root "$SRC" || die "Lokale Quelle gehoert nicht root oder ist beschreibbar. Auch --no-cli fuehrt sie nicht aus. Vorher: chown -R root:root <quelle>"
         fi
         info "Quelle: lokales Verzeichnis ${C_DIM}$(sanitize_text "$SRC")${C_RESET}"
         return
     fi
 
+    require_python3
+    refuse_checksum_without_ref
     need_tool curl
     need_tool tar
     if [ -n "$CHECKSUM" ]; then
         command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 \
             || die "sha256sum fehlt. Ohne das Programm kann --checksum nicht geprueft werden."
+        if [ "${TAG_REQUESTED:-0}" != "1" ] && [ "${BRANCH_REQUESTED:-0}" != "1" ]; then
+            warn "Die Pruefsumme gilt nur fuer diesen Lauf und wird nicht in nebula gespeichert, weil kein --tag und kein --branch gesetzt ist."
+        fi
     else
-        info "Keine SHA-256-Pruefsumme gesetzt. Optional: --tag <name> --checksum <sha256>."
+        warn "Keine SHA-256-Pruefsumme gesetzt. Optional: --tag <name> --checksum <sha256>."
+        if [ -n "${SUDO_USER:-}" ]; then
+            warn "sudo entfernt PTD_SHA256. Bitte --checksum verwenden oder: sudo --preserve-env=PTD_SHA256"
+        fi
     fi
 
     # Tarball nur innerhalb eines 0700-Verzeichnisses. Nicht per Pfad in /tmp neu anlegen.
@@ -764,7 +838,9 @@ resolve_source() {
     SRC_TMP="$SRC_ROOT/tree"
     mkdir -m 700 -- "$SRC_TMP"
     SRC_TARBALL="$SRC_ROOT/source.tar.gz"
-    trap cleanup_source EXIT
+    if [ "${PTD_SELFTEST:-}" != "1" ]; then
+        trap finish_exit EXIT
+    fi
 
     local branches=() b
     while IFS= read -r b; do
@@ -1203,15 +1279,78 @@ claim_dir() {
     fi
 }
 
+# Urspruenglichen Besitzer merken, bevor das Siegel root:root 0755 setzt.
+remember_dir() {
+    local path="$1"
+    [ -d "$path" ] && [ ! -L "$path" ] || return 0
+    SEAL_PATHS+=("$path")
+    SEAL_UIDS+=("$(stat -c '%u' "$path")")
+    SEAL_GIDS+=("$(stat -c '%g' "$path")")
+    SEAL_MODES+=("$(stat -c '%a' "$path")")
+}
+
+# Von unten nach oben: erst chmod, dann chown -h. Der Parent gehoert dabei
+# noch root, www-data kann den Eintrag also nicht dazwischen tauschen.
+restore_sealed_dirs() {
+    local i path mode uid gid n
+    n="${#SEAL_PATHS[@]}"
+    [ "$n" -gt 0 ] || return 0
+    for (( i=n-1; i>=0; i-- )); do
+        path="${SEAL_PATHS[$i]}"
+        mode="${SEAL_MODES[$i]}"
+        uid="${SEAL_UIDS[$i]}"
+        gid="${SEAL_GIDS[$i]}"
+        if [ -L "$path" ] || [ ! -d "$path" ]; then
+            warn "Verzeichnis nicht wiederhergestellt (kein echtes Verzeichnis): $(sanitize_text "$path")"
+            continue
+        fi
+        chmod "$mode" -- "$path" || warn "chmod fehlgeschlagen: $(sanitize_text "$path")"
+        if [ -L "$path" ] || [ ! -d "$path" ]; then
+            warn "Verzeichnis wurde vor dem chown ersetzt: $(sanitize_text "$path")"
+            continue
+        fi
+        if [ "$(id -u)" = "0" ]; then
+            chown -h "$uid:$gid" -- "$path" || warn "chown fehlgeschlagen: $(sanitize_text "$path")"
+        fi
+    done
+    SEAL_PATHS=()
+    SEAL_UIDS=()
+    SEAL_GIDS=()
+    SEAL_MODES=()
+}
+
+finish_exit() {
+    local rc=$?
+    set +e
+    restore_sealed_dirs
+    cleanup_source
+    exit "$rc"
+}
+
 # Bei jedem Install, Update, Uninstall und Restore. Pterodactyl-Upgrades setzen
 # chown -R www-data auf den Baum; www-data koennte sonst resources oder public
 # gegen einen Symlink tauschen. storage und bootstrap/cache bleiben unberuehrt.
+# Nach dem Lauf stellt der Exit-Trap Besitzer, Gruppe und Modus wieder her,
+# damit php artisan p:upgrade nicht root als Besitzer uebernimmt.
 prepare_panel_writes() {
+    require_python3
     [ -n "${PANEL:-}" ] || die "Panel-Pfad fehlt."
     if [ ! -d "$PANEL" ] || [ -L "$PANEL" ]; then
         die "Panel-Pfad ist kein Verzeichnis."
     fi
     preflight_anchors || die "Keine sichere Zwischenablage auf demselben Dateisystem. Abbruch vor der ersten Aenderung."
+    if [ "${#SEAL_PATHS[@]}" -eq 0 ]; then
+        remember_dir "$PANEL"
+        remember_dir "$PANEL/resources"
+        remember_dir "$PANEL/resources/views"
+        remember_dir "$PANEL/resources/views/templates"
+        remember_dir "$PANEL/resources/views/layouts"
+        remember_dir "$PANEL/public"
+        remember_dir "$PANEL/public/themes"
+    fi
+    if [ "${PTD_SELFTEST:-}" != "1" ]; then
+        trap finish_exit EXIT
+    fi
     claim_dir "$PANEL" 0
     claim_dir "$PANEL/resources" 0
     claim_dir "$PANEL/resources/views" 0
@@ -1363,8 +1502,15 @@ safe_replace_file() {
     dir="$(dirname "$dest")"
     real_dir "$dir" || die "Zielverzeichnis fehlt oder ist ein Symlink."
     mode="$(stat -c '%a' "$dest" 2>/dev/null || echo 644)"
-    [[ "$mode" =~ ^[0-7]{3,4}$ ]] || mode="644"
+    mode="$(mask_blade_mode "$mode")"
     stage_file_into "$dest" "$srcf" "$mode" "$rel"
+}
+
+# Alte Blade-Modi duerfen setuid, Gruppen- und Fremdschreiben nicht behalten.
+mask_blade_mode() {
+    local mode="$1"
+    [[ "$mode" =~ ^[0-7]{3,4}$ ]] || mode="644"
+    printf '%o' $((8#$mode & 0644))
 }
 
 # Entfernt nur, wenn die Elternkette unmittelbar davor noch echt ist.
@@ -1760,6 +1906,18 @@ make_backup() {
 
 # Kopiert nur gepruefte regulaere Dateien. tar liest danach diese Kopie,
 # nicht den von www-data beschreibbaren Panel-Baum.
+snapshot_owner_spec() {
+    local spec uid
+    spec="$(id -u),0"
+    if [ -d "$PANEL/storage" ] && [ ! -L "$PANEL/storage" ]; then
+        uid="$(stat -c '%u' "$PANEL/storage" 2>/dev/null || true)"
+        if [ -n "$uid" ]; then
+            spec="$spec,$uid"
+        fi
+    fi
+    printf '%s' "$spec"
+}
+
 snapshot_panel_files() {
     local dest_root="$1" rel src
     shift
@@ -1774,7 +1932,7 @@ snapshot_panel_files() {
             regular_file "$src" || return 1
         fi
         parent_still_real "$src" "$rel" || return 1
-        fd_py snapshot "$PANEL" "$rel" "$dest_root" || return 1
+        fd_py snapshot "$PANEL" "$rel" "$dest_root" "$(snapshot_owner_spec)" || return 1
     done
     return 0
 }
@@ -1812,6 +1970,7 @@ restore_backup() {
         printf '  %s[dry-run]%s Backup nach %s entpacken und bekannte Dateien kopieren\n' "$C_DIM" "$C_RESET" "$PANEL"
     fi
     clear_views
+    restore_sealed_dirs
     ok "Backup zurueckgesichert."
 }
 
@@ -1901,8 +2060,12 @@ cli_pin_args() {
     if [ "${TAG_REQUESTED:-0}" = "1" ]; then
         printf '%s\n' --tag
         printf '%s\n' "$BRANCH"
+    elif [ "${BRANCH_REQUESTED:-0}" = "1" ]; then
+        printf '%s\n' --branch
+        printf '%s\n' "$BRANCH"
     fi
-    if [ -n "${CHECKSUM:-}" ]; then
+    # Summe ohne feste Ref wuerde jedes spaetere Update unbrauchbar machen.
+    if [ -n "${CHECKSUM:-}" ] && { [ "${TAG_REQUESTED:-0}" = "1" ] || [ "${BRANCH_REQUESTED:-0}" = "1" ]; }; then
         printf '%s\n' --checksum
         printf '%s\n' "$(printf '%s' "$CHECKSUM" | tr 'A-F' 'a-f')"
     fi
@@ -1916,14 +2079,17 @@ install_cli() {
     fi
     swap_lib_dir "$SRC"
 
-    local qlib qpanel clitemp pin_tag="" pin_sum="" qtag qsum
+    local qlib qpanel clitemp pin_ref="" pin_sum="" qref qsum
     printf -v qlib '%q' "$LIB_DIR"
     printf -v qpanel '%q' "$PANEL"
     if [ "${TAG_REQUESTED:-0}" = "1" ]; then
-        printf -v qtag '%q' "$BRANCH"
-        pin_tag="--tag $qtag"
+        printf -v qref '%q' "$BRANCH"
+        pin_ref="--tag $qref"
+    elif [ "${BRANCH_REQUESTED:-0}" = "1" ]; then
+        printf -v qref '%q' "$BRANCH"
+        pin_ref="--branch $qref"
     fi
-    if [ -n "${CHECKSUM:-}" ]; then
+    if [ -n "${CHECKSUM:-}" ] && [ -n "$pin_ref" ]; then
         printf -v qsum '%q' "$(printf '%s' "$CHECKSUM" | tr 'A-F' 'a-f')"
         pin_sum="--checksum $qsum"
     fi
@@ -1935,8 +2101,8 @@ set -euo pipefail
 LIB=$qlib
 PANEL_ARG=(--path $qpanel)
 case "\${1:-help}" in
-    install)   shift; exec bash "\$LIB/install.sh" --install   "\${PANEL_ARG[@]}" $pin_tag $pin_sum "\$@" ;;
-    update)    shift; exec bash "\$LIB/install.sh" --update    "\${PANEL_ARG[@]}" $pin_tag $pin_sum "\$@" ;;
+    install)   shift; exec bash "\$LIB/install.sh" --install   "\${PANEL_ARG[@]}" $pin_ref $pin_sum "\$@" ;;
+    update)    shift; exec bash "\$LIB/install.sh" --update    "\${PANEL_ARG[@]}" $pin_ref $pin_sum "\$@" ;;
     uninstall) shift; exec bash "\$LIB/install.sh" --uninstall "\${PANEL_ARG[@]}" "\$@" ;;
     doctor)    shift; exec bash "\$LIB/install.sh" --doctor    "\${PANEL_ARG[@]}" "\$@" ;;
     status)    shift; exec bash "\$LIB/install.sh" --status    "\${PANEL_ARG[@]}" "\$@" ;;
@@ -2031,6 +2197,7 @@ do_install() {
     write_state "$asset"
     install_cli
     rm -rf "$build_dir"
+    restore_sealed_dirs
 
     printf '\n  %s%s ist aktiv.%s\n\n' "$C_OK$C_B" "$THEME_NAME" "$C_RESET"
     printf '  %sStrg + K%s          Befehlspalette – Server suchen, Aktionen ausloesen\n' "$C_B" "$C_RESET"
@@ -2094,7 +2261,11 @@ do_uninstall() {
         remove_lib_dir
     fi
 
-    printf '\n  %sDas Panel ist wieder im Originalzustand.%s\n' "$C_OK" "$C_RESET"
+    restore_sealed_dirs
+    printf '\n  %sNebula-Dateien sind entfernt.%s\n' "$C_OK" "$C_RESET"
+    printf '  Besitzer, Gruppe und Rechte der Verzeichnisse sind wieder wie vor diesem Lauf.\n'
+    printf '  storage/ und bootstrap/cache wurden nicht angefasst.\n'
+    printf '  %sPanel-Upgrade:%s php artisan p:upgrade --user=www-data --group=www-data\n' "$C_DIM" "$C_RESET"
     printf '  %sBackups bleiben unter %s erhalten.%s\n\n' "$C_DIM" "$BACKUP_ROOT" "$C_RESET"
 }
 
@@ -2173,6 +2344,8 @@ fi
 
 banner
 need_root
+require_python3
+trap finish_exit EXIT
 
 case "$ACTION" in
     install|update)

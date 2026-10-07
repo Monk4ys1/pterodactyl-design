@@ -58,19 +58,29 @@ bleibt bei `refs/heads`. Die Summe gehört zum Archiv
 
 `sudo` entfernt die Variable `PTD_SHA256`. Das Flag `--checksum` bevorzugen,
 oder die Variable ausdrücklich durchreichen:
-`sudo --preserve-env=PTD_SHA256 bash install.sh`. Ein gesetzter Tag und die
-Prüfsumme werden in `nebula` gespeichert und beim nächsten `nebula update`
-wieder verwendet. Ohne diese Angabe bleibt das bisherige Installationsverhalten
+`sudo --preserve-env=PTD_SHA256 bash install.sh`. Ein leeres `--checksum`
+wird abgelehnt. Ein gesetztes `--tag` oder `--branch` und die Prüfsumme
+werden in `nebula` gespeichert und beim nächsten `nebula update` wieder
+verwendet. Eine Summe ohne `--tag` und ohne `--branch` gilt nur für diesen
+Lauf und wird nicht gespeichert; `nebula update` bricht in dem Fall mit einer
+klaren Meldung ab, statt den Standardbranch endlos gegen eine alte Summe zu
+prüfen. Ohne diese Angabe bleibt das bisherige Installationsverhalten
 erhalten.
 
-Der Installer setzt bei jedem Lauf (Installation, Update, Entfernen, Restore)
-die Verzeichnisse des Panels, `resources`, `resources/views`,
-`resources/views/templates`, `resources/views/layouts`, `public` und
-`public/themes` auf `root:root` und `0755`. `storage/` und `bootstrap/cache`
-bleiben unberührt, damit Laravel weiter Views und Cache schreiben kann.
-Pterodactyl-Upgrades, die `chown -R www-data` auf den ganzen Baum ausführen,
-werden beim nächsten `nebula update` für genau diese Verzeichnisse wieder
-zurückgesetzt. Es wird `python3` benötigt (`apt install python3`).
+Während Installation, Update, Entfernen und Restore gehören die Verzeichnisse
+des Panels, `resources`, `resources/views`, `resources/views/templates`,
+`resources/views/layouts`, `public` und `public/themes` vorübergehend
+`root:root` `0755`, damit der Web-Benutzer sie nicht gegen einen Symlink
+tauschen kann. Danach — auch wenn der Lauf abbricht — stellt der Installer
+Besitzer, Gruppe und Modus wieder her. `storage/` und `bootstrap/cache` bleiben
+unberührt. Es wird `python3` benötigt (`apt install python3`).
+
+Ein anschließendes Panel-Upgrade soll den Web-Benutzer nennen, sonst schlägt
+`p:upgrade` root vor und ein Enter führt `chown -R root:root` aus:
+
+```bash
+php artisan p:upgrade --user=www-data --group=www-data
+```
 
 Signierte Releases und ein geschützter Standardbranch sind Einstellungen am
 Repository, kein Schalter in diesem Installer.
@@ -83,8 +93,9 @@ Danach im Browser einmal mit <kbd>Strg</kbd>+<kbd>F5</kbd> neu laden.
 nebula uninstall
 ```
 
-Das Panel ist danach **byte-identisch** im Originalzustand – die Blade-Templates
-werden exakt so wiederhergestellt, wie sie vorher waren.
+Die Nebula-Blöcke und Assets sind danach entfernt, Besitzer und Rechte der
+Verzeichnisse wieder wie vor dem Lauf. Backups bleiben liegen. `storage/` und
+`bootstrap/cache` fasst der Installer nicht an.
 
 ---
 

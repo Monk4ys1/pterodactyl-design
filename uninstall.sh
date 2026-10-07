@@ -8,6 +8,8 @@
 # oder: sudo --preserve-env=PTD_SHA256
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# CWD darf nicht auf Pythons Modulpfad liegen (CWE-427).
+cd / || exit 1
 if [ -f "$HERE/install.sh" ]; then
     exec bash "$HERE/install.sh" --uninstall "$@"
 fi
