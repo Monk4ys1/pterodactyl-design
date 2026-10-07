@@ -5,6 +5,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 
+unset PTD_SHA256 || true
 PTD_SELFTEST=1
 # shellcheck disable=SC1091
 source "$ROOT/install.sh"
@@ -207,6 +208,8 @@ write_state "2.0.0-abc123def0"
 [ -f "$state_panel/.nebula-install.json" ] || fail "state file missing"
 [ ! -L "$state_panel/.nebula-install.json" ] || fail "state file is a symlink"
 [ "$(stat -c '%a' "$state_panel/.nebula-install.json")" = "600" ] || fail "state file mode"
+[ "$(read_state version)" = "2.0.0" ] || fail "state version"
+[ "$(read_state asset_version)" = "2.0.0-abc123def0" ] || fail "state asset"
 rm -f "$state_panel/.nebula-install.json"
 ln -s "$outside/pwned" "$state_panel/.nebula-install.json"
 if ( PANEL="$state_panel"; SRC="$state_src"; write_state "2.0.0-abc123def0" ) >/dev/null 2>&1; then
@@ -278,11 +281,12 @@ grep -qx 'payload' "$panel/public/themes/nebula/nebula.css" || fail "staged inst
 [ ! -L "$panel/public/themes/nebula/nebula.css" ] || fail "installed file is a symlink"
 grep -qx 'secret' "$outside/pwned" || fail "temp symlink swap wrote outside the panel"
 
-# Datei, deren Elternverzeichnis beim rename schon ein Symlink ist, wird wieder entfernt.
+# Symlink-Vorfahr: kein mv, und eine schon vorhandene Datei am Fremdpfad bleibt byte-genau.
 leak_out="$(realpath -e "$(mktemp -d "$tmp/leak.XXXXXX")")"
 leak_panel="$(realpath -e "$(mktemp -d "$tmp/leakpanel.XXXXXX")")"
 mkdir -p "$leak_panel/public" "$leak_out/nebula"
 printf 'secret\n' > "$leak_out/pwned"
+printf 'victim\n' > "$leak_out/nebula/nebula.css"
 printf 'payload\n' > "$leak_out/staged-src"
 ln -s "$leak_out" "$leak_panel/public/themes"
 PANEL="$leak_panel"
@@ -291,9 +295,7 @@ printf 'payload\n' > "$staged_file"
 if publish_file "$staged_file" "$leak_panel/public/themes/nebula/nebula.css" "public/themes/nebula/nebula.css"; then
     fail "publish_file accepted a symlinked parent"
 fi
-if [ -e "$leak_out/nebula/nebula.css" ] || [ -e "$leak_out/nebula.css" ]; then
-    fail "publish_file left a file outside the panel"
-fi
+grep -qx 'victim' "$leak_out/nebula/nebula.css" || fail "publish_file removed or replaced the outside file"
 grep -qx 'secret' "$leak_out/pwned" || fail "publish_file clobbered the outside file"
 
 # Theme-Verzeichnis: mkdir/mv durch einen nachtraeglich gesetzten Symlink wird per rmdir entfernt.
@@ -311,11 +313,13 @@ fi
 [ ! -d "$tree_out/nebula" ] || fail "theme dir leaked through a symlinked parent"
 grep -qx 'secret' "$tree_out/pwned" || fail "theme publish clobbered the outside file"
 
-# safe_reset_theme_dir selbst: mv sieht ein echtes public/themes, der Aufruf tauscht es vorher aus.
+# safe_reset_theme_dir: mv kann den Elternpfad noch tauschen. Danach darf nichts
+# ausserhalb geloescht werden (kein rm/rmdir am Ziel).
 reset_panel="$(realpath -e "$(mktemp -d "$tmp/resetpanel.XXXXXX")")"
 reset_out="$(realpath -e "$(mktemp -d "$tmp/resetout.XXXXXX")")"
 mkdir -p "$reset_panel/public/themes"
 printf 'secret\n' > "$reset_out/pwned"
+printf 'keep\n' > "$reset_out/keep-me"
 PANEL="$reset_panel"
 if (
     # shellcheck disable=SC2030,SC2031
@@ -328,8 +332,8 @@ if (
 ) >/dev/null 2>&1; then
     fail "safe_reset_theme_dir kept a directory created through a swapped parent"
 fi
-[ ! -d "$reset_out/nebula" ] || fail "safe_reset_theme_dir leaked the theme directory"
 grep -qx 'secret' "$reset_out/pwned" || fail "safe_reset_theme_dir clobbered the outside file"
+grep -qx 'keep' "$reset_out/keep-me" || fail "safe_reset_theme_dir removed an outside file"
 
 if [ "$(stat -c '%d' /)" != "$(stat -c '%d' /dev/shm)" ]; then
     shm_file="$(mktemp --tmpdir=/dev/shm nebula-cross.XXXXXX)"
@@ -342,6 +346,132 @@ if [ "$(stat -c '%d' /)" != "$(stat -c '%d' /dev/shm)" ]; then
     [ ! -e "$panel/public/themes/nebula/cross.css" ] || fail "cross-device publish created the destination"
     rm -f "$shm_file"
 fi
+
+# H1: chown/chmod nach dem Veroeffentlichen darf einem getauschten public/themes nicht folgen.
+h_out="$(realpath -e "$(mktemp -d "$tmp/h1out.XXXXXX")")"
+h_panel="$(realpath -e "$(mktemp -d "$tmp/h1panel.XXXXXX")")"
+mkdir -p "$h_panel/public" "$h_out/nebula"
+printf 'victim\n' > "$h_out/pwned"
+printf 'owned\n' > "$h_out/nebula/nebula.css"
+h_before="$(stat -c '%u %g %a' "$h_out/pwned" "$h_out/nebula/nebula.css")"
+ln -s "$h_out" "$h_panel/public/themes"
+h_build="$(mktemp -d "$tmp/h1build.XXXXXX")"
+printf 'css\n' > "$h_build/nebula.css"
+if ( PANEL="$h_panel"; install_built_assets "$h_build" ) >/dev/null 2>&1; then
+    fail "install_built_assets followed a swapped themes directory"
+fi
+h_after="$(stat -c '%u %g %a' "$h_out/pwned" "$h_out/nebula/nebula.css")"
+[ "$h_before" = "$h_after" ] || fail "ownership step changed a file outside the panel"
+grep -qx 'victim' "$h_out/pwned" || fail "outside sentinel content changed"
+grep -qx 'owned' "$h_out/nebula/nebula.css" || fail "outside asset content changed"
+
+fn_body() {
+    awk -v name="$1" 'BEGIN{p=0} $0 ~ "^" name "\\(\\)"{p=1} p{print} p && /^}$/{exit}' "$ROOT/install.sh"
+}
+printf '%s\n' "$(fn_body install_built_assets)" | grep -E 'chown|chmod' && fail "install_built_assets still chowns the published tree"
+printf '%s\n' "$(fn_body write_state)" | grep -n 'chmod' && fail "write_state still chmods the panel path"
+printf '%s\n' "$(fn_body publish_file)" | grep -E 'rm -f|rmdir' && fail "publish_file still removes the destination"
+printf '%s\n' "$(fn_body publish_tree_dir)" | grep -n 'rmdir' && fail "publish_tree_dir still removes the destination"
+
+# chmod am Zustandsdatei-Pfad im Panel ist verboten; Modus kommt aus der Zwischenablage.
+chmod_log="$(mktemp)"
+real_chmod="$(command -v chmod)"
+cat > "$wrap/chmod" <<EOF
+#!/bin/bash
+for a in "\$@"; do
+    case "\$a" in
+        "$state_panel/$STATE_FILE")
+            printf '%s\n' "\$a" >> "$chmod_log"
+            exit 0
+            ;;
+    esac
+done
+exec ${real_chmod} "\$@"
+EOF
+chmod 755 "$wrap/chmod"
+(
+    # shellcheck disable=SC2030,SC2031
+    PATH="$wrap:$PATH"
+    PANEL="$state_panel"
+    SRC="$state_src"
+    rm -f "$state_panel/$STATE_FILE"
+    write_state "2.0.0-abc123def0"
+)
+[ ! -s "$chmod_log" ] || fail "write_state chmod on the panel state file: $(cat "$chmod_log")"
+[ "$(stat -c '%a' "$state_panel/$STATE_FILE")" = "600" ] || fail "state mode without post-chmod"
+
+# Backup liest eine private Kopie, keinen Symlink aus dem Web-Baum.
+bak_panel="$(realpath -e "$(mktemp -d "$tmp/bakpanel.XXXXXX")")"
+bak_out="$(realpath -e "$(mktemp -d "$tmp/bakout.XXXXXX")")"
+mkdir -p "$bak_panel/resources/views/templates" "$bak_panel/public/themes/nebula"
+printf 'BLADE\n' > "$bak_panel/$WRAPPER_REL"
+printf 'CSS\n' > "$bak_panel/$THEME_REL/nebula.css"
+printf 'secret\n' > "$bak_out/pwned"
+PANEL="$bak_panel"
+snap="$(mktemp -d "$tmp/snap.XXXXXX")"
+snapshot_panel_files "$snap" "$WRAPPER_REL" "$THEME_REL" || fail "snapshot rejected a clean tree"
+grep -qx 'BLADE' "$snap/$WRAPPER_REL" || fail "snapshot missed blade"
+grep -qx 'CSS' "$snap/$THEME_REL/nebula.css" || fail "snapshot missed css"
+if grep -R -q 'secret' "$snap"; then fail "snapshot copied outside content"; fi
+rm -rf "$bak_panel/public/themes"
+ln -s "$bak_out" "$bak_panel/public/themes"
+snap2="$(mktemp -d "$tmp/snap2.XXXXXX")"
+if snapshot_panel_files "$snap2" "$THEME_REL"; then fail "snapshot followed themes symlink"; fi
+if grep -R -q 'secret' "$snap2" 2>/dev/null; then fail "snapshot stored the symlink target"; fi
+
+saved_backup="$BACKUP_ROOT"
+saved_do_backup="$DO_BACKUP"
+BACKUP_ROOT="$tmp/backups/nebula"
+DO_BACKUP=1
+rm -f "$bak_panel/public/themes"
+mkdir -p "$bak_panel/public/themes/nebula"
+printf 'CSS\n' > "$bak_panel/$THEME_REL/nebula.css"
+PANEL="$bak_panel"
+make_backup
+archive="$(head -n 1 "$BACKUP_ROOT/latest")"
+tar -tzf "$archive" | grep -q 'nebula.css' || fail "backup archive missed theme"
+if tar -xOf "$archive" | grep -q 'secret'; then fail "backup archive contains outside bytes"; fi
+BACKUP_ROOT="$saved_backup"
+DO_BACKUP="$saved_do_backup"
+
+# Pruefsumme, Tag, Ausgabe, Besitzer, Elternverzeichnisse.
+blob="$(mktemp)"
+printf 'abc\n' > "$blob"
+good_sum="$(sha256sum "$blob" | awk '{print $1}')"
+CHECKSUM="$good_sum"
+checksum_matches "$blob" || fail "checksum match rejected"
+if [ "${good_sum: -1}" = "0" ]; then
+    CHECKSUM="${good_sum%?}1"
+else
+    CHECKSUM="${good_sum%?}0"
+fi
+if checksum_matches "$blob"; then fail "checksum mismatch accepted"; fi
+CHECKSUM=""
+valid_checksum "$good_sum" || fail "valid checksum rejected"
+if valid_checksum "xyz"; then fail "short checksum accepted"; fi
+# ESC und CR fallen weg; die restlichen Zeichen sind kein Steuerbefehl mehr.
+[ "$(sanitize_text $'ab\033[2Jc\r')" = 'ab[2Jc' ] || fail "control characters survived"
+parents_root_owned /usr/bin || fail "root-owned parents rejected"
+if parents_root_owned "$tmp/not-a-panel"; then fail "user-owned parent accepted"; fi
+if tree_owned_by_root "$tmp"; then fail "user tree treated as root-owned"; fi
+grep -q 'SRC_ROOT/source.tar.gz' "$ROOT/install.sh" || fail "tarball not kept in a private directory"
+if grep -n 'SRC_TARBALL=' "$ROOT/install.sh" | grep -v 'source.tar.gz' | grep -q mktemp; then
+    fail "tarball recreated via mktemp in /tmp"
+fi
+grep -q -- '--pty' "$ROOT/install.sh" || fail "runuser without a private pty"
+PTD_SELFTEST=1 bash "$ROOT/install.sh" --tag v1.2.3 --checksum "$good_sum" || fail "tag and checksum flags rejected"
+if PTD_SELFTEST=1 bash "$ROOT/install.sh" --checksum xyz >/dev/null 2>&1; then fail "bad checksum flag accepted"; fi
+
+# Vorhandenes Fremdverzeichnis darf beim Reset nicht geloescht werden.
+pre_panel="$(realpath -e "$(mktemp -d "$tmp/prepanel.XXXXXX")")"
+pre_out="$(realpath -e "$(mktemp -d "$tmp/preout.XXXXXX")")"
+mkdir -p "$pre_panel/public" "$pre_out/nebula"
+printf 'stay\n' > "$pre_out/nebula/keep"
+ln -s "$pre_out" "$pre_panel/public/themes"
+if ( PANEL="$pre_panel"; safe_reset_theme_dir ) >/dev/null 2>&1; then
+    fail "safe_reset accepted a symlinked themes directory"
+fi
+grep -qx 'stay' "$pre_out/nebula/keep" || fail "safe_reset deleted an outside theme tree"
 
 bash -n "$ROOT/install.sh"
 bash -n "$ROOT/scripts/build.sh"
