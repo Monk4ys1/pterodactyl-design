@@ -484,9 +484,11 @@
         if (!raw) return;
         try {
             var parsed = JSON.parse(raw);
-            Object.keys(parsed).forEach(function (k) {
-                if (k in PTD.settings) PTD.settings[k] = parsed[k];
-            });
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                PTD.toast({ type: 'danger', title: 'Fehler', msg: 'Ungueltiges JSON.' });
+                return;
+            }
+            PTD.settings = PTD.merge(PTD.defaults, parsed);
             PTD.save();
             PTD.apply();
             PTD.toast({ type: 'ok', title: 'Uebernommen', msg: 'Seite wird neu geladen …' });

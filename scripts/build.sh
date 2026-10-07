@@ -56,4 +56,4 @@ fi
 printf '%s-%s' "$VERSION" "$HASH" > "$OUT/ASSET_VERSION"
 
 echo "Nebula $VERSION gebaut nach $OUT (Asset-Version $(cat "$OUT/ASSET_VERSION"))"
-ls -lh "$OUT" | sed 's/^/  /'
+find "$OUT" -maxdepth 1 -type f -printf '  %s  %f\n' | sort
