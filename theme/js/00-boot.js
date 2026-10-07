@@ -94,14 +94,72 @@
         recents: []
     };
 
+    function bannedKey(k) {
+        return k === '__proto__' || k === 'constructor' || k === 'prototype';
+    }
+
+    function ownKey(obj, k) {
+        return !!obj && Object.prototype.hasOwnProperty.call(obj, k);
+    }
+
+    function plainObject(v) {
+        return !!v && typeof v === 'object' && !Array.isArray(v);
+    }
+
+    /* snippets/tags sind leere Karten mit Server-IDs. Schluessel aus dem
+       Import bleiben erhalten, Proto-Namen und falsche Typen nicht. */
+    function sanitizeMap(key, over) {
+        var out = {}, k, val, tag, i, list;
+        if (!plainObject(over)) return out;
+        for (k in over) {
+            if (!ownKey(over, k) || bannedKey(k)) continue;
+            val = over[k];
+            if (key === 'snippets') {
+                if (!Array.isArray(val)) continue;
+                list = [];
+                for (i = 0; i < val.length; i++) {
+                    if (typeof val[i] === 'string') list.push(val[i]);
+                }
+                out[k] = list;
+            } else if (key === 'tags') {
+                if (!plainObject(val)) continue;
+                tag = {};
+                if (ownKey(val, 'color') && typeof val.color === 'string') tag.color = val.color;
+                if (ownKey(val, 'label') && typeof val.label === 'string') tag.label = val.label;
+                out[k] = tag;
+            }
+        }
+        return out;
+    }
+
+    function sanitizeArray(baseArr, overVal) {
+        var out = [], i, item;
+        if (!Array.isArray(overVal)) {
+            for (i = 0; i < baseArr.length; i++) out.push(baseArr[i]);
+            return out;
+        }
+        for (i = 0; i < overVal.length; i++) {
+            item = overVal[i];
+            if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') out.push(item);
+        }
+        return out;
+    }
+
     function deepMerge(base, over) {
-        var out = {}, k;
+        var out = {}, k, child;
+        if (!plainObject(over)) over = {};
         for (k in base) {
-            if (!Object.prototype.hasOwnProperty.call(base, k)) continue;
-            if (base[k] && typeof base[k] === 'object' && !Array.isArray(base[k])) {
-                out[k] = deepMerge(base[k], (over && over[k]) || {});
+            if (!ownKey(base, k) || bannedKey(k)) continue;
+            child = base[k];
+            if (plainObject(child)) {
+                if (Object.keys(child).length === 0) out[k] = sanitizeMap(k, over[k]);
+                else out[k] = deepMerge(child, plainObject(over[k]) ? over[k] : {});
+            } else if (Array.isArray(child)) {
+                out[k] = sanitizeArray(child, over[k]);
+            } else if (ownKey(over, k) && typeof over[k] === typeof child && (typeof child !== 'number' || isFinite(over[k]))) {
+                out[k] = over[k];
             } else {
-                out[k] = (over && Object.prototype.hasOwnProperty.call(over, k)) ? over[k] : base[k];
+                out[k] = child;
             }
         }
         return out;
@@ -411,6 +469,7 @@
         bus: bus,
         store: store,
         defaults: DEFAULTS,
+        merge: deepMerge,
         settings: settings,
         stripAnsi: stripAnsi,
         levelOf: levelOf,

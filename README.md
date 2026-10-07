@@ -37,8 +37,9 @@ sagt dir am Ende, was du drücken kannst.
 > ```
 >
 > Der Installer erkennt, dass er aus einem lokalen Verzeichnis läuft, und lädt
-> dann nichts nach. Die lokale Quelle muss root gehören, weil der Befehl
-> `nebula` danach aus `/usr/local/lib` als root läuft.
+> dann nichts nach. `--tag` und `--checksum` werden dabei abgelehnt, statt
+> still ignoriert zu werden. Die lokale Quelle muss root gehören, weil der
+> Befehl `nebula` danach aus `/usr/local/lib` als root läuft.
 
 ### Version festnageln
 
@@ -51,10 +52,25 @@ sudo bash install.sh --tag v2.0.0 --checksum <64-stelliger sha256>
 nebula update --tag v2.0.0 --checksum <64-stelliger sha256>
 ```
 
-Dieselbe Prüfsumme setzt die Variable `PTD_SHA256`. Die Summe gehört zum
-Archiv `https://codeload.github.com/Monk4ys1/pterodactyl-design/tar.gz/<tag>`
-(und zur Branch-URL unter `refs/heads/`, falls kein Tag genutzt wird). Ohne
-diese Angabe bleibt das bisherige Installationsverhalten erhalten.
+`--tag` versucht zuerst `refs/tags/<tag>`, danach den bloßen Namen. `--branch`
+bleibt bei `refs/heads`. Die Summe gehört zum Archiv
+`https://codeload.github.com/Monk4ys1/pterodactyl-design/tar.gz/refs/tags/<tag>`.
+
+`sudo` entfernt die Variable `PTD_SHA256`. Das Flag `--checksum` bevorzugen,
+oder die Variable ausdrücklich durchreichen:
+`sudo --preserve-env=PTD_SHA256 bash install.sh`. Ein gesetzter Tag und die
+Prüfsumme werden in `nebula` gespeichert und beim nächsten `nebula update`
+wieder verwendet. Ohne diese Angabe bleibt das bisherige Installationsverhalten
+erhalten.
+
+Der Installer setzt bei jedem Lauf (Installation, Update, Entfernen, Restore)
+die Verzeichnisse des Panels, `resources`, `resources/views`,
+`resources/views/templates`, `resources/views/layouts`, `public` und
+`public/themes` auf `root:root` und `0755`. `storage/` und `bootstrap/cache`
+bleiben unberührt, damit Laravel weiter Views und Cache schreiben kann.
+Pterodactyl-Upgrades, die `chown -R www-data` auf den ganzen Baum ausführen,
+werden beim nächsten `nebula update` für genau diese Verzeichnisse wieder
+zurückgesetzt. Es wird `python3` benötigt (`apt install python3`).
 
 Signierte Releases und ein geschützter Standardbranch sind Einstellungen am
 Repository, kein Schalter in diesem Installer.

@@ -14,9 +14,9 @@
 #
 #  Optionen:
 #    --path <verzeichnis>   Pfad zum Panel (Standard: automatisch erkannt)
-#    --branch <name>        Git-Ref der Quelle; kein Fallback auf andere Refs
-#    --tag <name>           Wie --branch: Tag festnageln, kein Fallback
-#    --checksum <sha256>    SHA-256 des codeload-Archivs; auch PTD_SHA256
+#    --branch <name>        Git-Branch der Quelle; kein Fallback auf andere Refs
+#    --tag <name>           Tag festnageln (zuerst refs/tags, kein Fallback)
+#    --checksum <sha256>    SHA-256 des codeload-Archivs; sudo streicht PTD_SHA256
 #    --yes                  Keine Rueckfragen
 #    --no-backup            Kein Backup anlegen (nicht empfohlen)
 #    --no-cli               Den Befehl "nebula" nicht installieren
@@ -53,10 +53,13 @@ Befehle
 
 Optionen
   --path <verzeichnis> Pfad zum Panel (Standard: automatisch erkannt)
-  --branch <name>      Git-Ref der Quelle; kein Fallback auf andere Refs
-  --tag <name>         Tag festnageln (wie --branch, kein Fallback)
+  --branch <name>      Git-Branch der Quelle; zuerst refs/heads, kein Fallback
+  --tag <name>         Tag festnageln; zuerst refs/tags, dann der bloße Name
   --checksum <sha256>  SHA-256 des Quellarchivs von codeload.github.com
-                       Dieselbe Variable: PTD_SHA256
+                       sudo entfernt die Variable PTD_SHA256. Flag bevorzugen,
+                       oder: sudo --preserve-env=PTD_SHA256
+                       Aus einem lokalen Checkout werden --tag und --checksum
+                       abgelehnt, statt still ignoriert zu werden.
                        Ohne Angabe bleibt der bisherige Download erhalten.
   --yes, -y            Keine Rueckfragen stellen
   --no-backup          Kein Backup anlegen (nicht empfohlen)
@@ -70,6 +73,7 @@ HELP
 ACTION="install"
 PANEL=""
 REF_EXPLICIT=0
+TAG_REQUESTED=0
 BRANCH="$DEFAULT_BRANCH"
 if [ -n "${PTD_BRANCH+x}" ]; then
     BRANCH="$PTD_BRANCH"
@@ -184,6 +188,9 @@ member_rejected() {
     local m="$1"
     [ -n "$m" ] || return 0
     m="${m#./}"
+    # Tar-Verzeichnisse enden auf "/". Sonst wird "/dir//" und jedes echte Archiv abgelehnt.
+    m="${m%/}"
+    [ -n "$m" ] || return 0
     case "$m" in
         /*|*\\*) return 0 ;;
     esac
@@ -216,13 +223,47 @@ archive_is_safe() {
     return 0
 }
 
+# 0, wenn der Modus fuer Gruppe oder andere beschreibbar ist (oder unbekannt).
+mode_go_writable() {
+    local mode="$1" gw ow
+    [ "${#mode}" -ge 3 ] || return 0
+    gw="${mode: -2:1}"
+    ow="${mode: -1}"
+    case "$gw" in 2|3|6|7) return 0 ;; esac
+    case "$ow" in 2|3|6|7) return 0 ;; esac
+    return 1
+}
+
+# Existierender Vorfahr von BACKUP_ROOT. Als root muss er root gehoeren und
+# darf nicht gruppen- oder fremdbeschreibbar sein. Sonst folgt mkdir einem Tausch.
+backup_ancestor_ok() {
+    local d="$1" mode
+    [ -n "$d" ] || return 1
+    while [ ! -d "$d" ] && [ "$d" != "/" ]; do
+        d="$(dirname "$d")"
+    done
+    [ -d "$d" ] && [ ! -L "$d" ] || return 1
+    if [ "$(id -u)" != "0" ]; then
+        return 0
+    fi
+    [ "$(stat -c '%u' "$d" 2>/dev/null || echo '')" = "0" ] || return 1
+    mode="$(stat -c '%a' "$d" 2>/dev/null || echo '')"
+    if mode_go_writable "$mode"; then
+        return 1
+    fi
+    return 0
+}
+
 prepare_backup_root() {
+    local parent
     if [ -L "$BACKUP_ROOT" ]; then
         die "Backup-Pfad ist ein Symlink: $BACKUP_ROOT"
     fi
     if [ -e "$BACKUP_ROOT" ] && [ ! -d "$BACKUP_ROOT" ]; then
         die "Backup-Pfad ist kein Verzeichnis: $BACKUP_ROOT"
     fi
+    parent="$(dirname "$BACKUP_ROOT")"
+    backup_ancestor_ok "$parent" || die "Backup-Elternverzeichnis gehoert nicht root oder ist beschreibbar: $(sanitize_text "$parent")"
     if [ -d "$BACKUP_ROOT" ]; then
         local owner
         owner="$(stat -c '%U' "$BACKUP_ROOT" 2>/dev/null || echo '')"
@@ -236,15 +277,23 @@ prepare_backup_root() {
         die "Backup-Pfad ist kein Verzeichnis: $BACKUP_ROOT"
     fi
     if [ "$(id -u)" = "0" ]; then
-        chown root:root "$BACKUP_ROOT"
+        chown -h root:root -- "$BACKUP_ROOT" || die "Backup-Verzeichnis nicht schuetzbar."
     fi
-    chmod 700 "$BACKUP_ROOT"
+    if [ -L "$BACKUP_ROOT" ] || [ ! -d "$BACKUP_ROOT" ]; then
+        die "Backup-Pfad ist ein Symlink: $BACKUP_ROOT"
+    fi
+    chmod 700 -- "$BACKUP_ROOT" || die "Backup-Verzeichnis nicht schuetzbar."
+    if [ -L "$BACKUP_ROOT" ] || [ ! -d "$BACKUP_ROOT" ]; then
+        die "Backup-Pfad ist ein Symlink: $BACKUP_ROOT"
+    fi
 }
 
-# Autodetect und --path: jedes Elternverzeichnis muss root gehoeren,
-# damit www-data das Panel-Verzeichnis nicht gegen einen Symlink tauschen kann.
+# Autodetect und --path: jedes Elternverzeichnis muss root gehoeren und darf
+# nicht gruppen- oder fremdbeschreibbar sein, damit www-data das Panel nicht
+# gegen einen Symlink tauschen kann. Das Panel-Verzeichnis selbst darf www-data
+# gehoeren; es wird vor dem Schreiben auf root:root 0755 gesetzt.
 parents_root_owned() {
-    local d="$1" owner
+    local d="$1" owner mode
     [ -n "$d" ] || return 1
     d="$(dirname "$d")"
     while [ "$d" != "/" ]; do
@@ -253,33 +302,47 @@ parents_root_owned() {
         fi
         owner="$(stat -c '%u' "$d" 2>/dev/null || echo '')"
         [ "$owner" = "0" ] || return 1
+        mode="$(stat -c '%a' "$d" 2>/dev/null || echo '')"
+        if mode_go_writable "$mode"; then
+            return 1
+        fi
         d="$(dirname "$d")"
     done
     return 0
 }
 
+panel_parent_advice() {
+    die "Panel gefunden, aber ein Elternverzeichnis von '$(sanitize_text "$1")' gehoert nicht root oder ist fuer die Gruppe oder andere beschreibbar. Bitte die Eltern auf root:root und 0755 setzen, zum Beispiel: sudo chown root:root /var/www && sudo chmod 755 /var/www. Das Panel-Verzeichnis selbst darf www-data gehoeren. Bei mehreren Panels --path angeben."
+}
+
+fail_if_many_panels() {
+    [ "$#" -le 1 ] && return 0
+    die "Mehrere Panels gefunden. Bitte genau eines mit --path angeben: $*"
+}
+
 harden_panel_path() {
-    local real mode other d
+    local real mode d
     real="$(realpath -e "$PANEL" 2>/dev/null || true)"
     [ -n "$real" ] || die "Panel-Pfad nicht aufloesbar: $PANEL"
     [ "$real" != "/" ] || die "Panel-Pfad ungueltig."
     PANEL="$real"
-    parents_root_owned "$PANEL" || die "Ein Elternverzeichnis des Panels gehoert nicht root: $(sanitize_text "$PANEL")"
+    parents_root_owned "$PANEL" || panel_parent_advice "$PANEL"
     d="$PANEL"
     while [ "$d" != "/" ]; do
+        if [ -L "$d" ]; then
+            die "Pfad enthaelt einen Symlink: $(sanitize_text "$d")"
+        fi
         mode="$(stat -c '%a' "$d" 2>/dev/null || echo 777)"
-        other="${mode: -1}"
-        case "$other" in
-            2|3|6|7) die "Pfad ist fuer andere beschreibbar: $(sanitize_text "$d")" ;;
-        esac
+        if mode_go_writable "$mode"; then
+            die "Pfad ist fuer die Gruppe oder andere beschreibbar: $(sanitize_text "$d"). Bitte chmod 755 setzen."
+        fi
         d="$(dirname "$d")"
     done
     regular_file "$PANEL/artisan" || die "artisan fehlt oder ist ein Symlink."
     mode="$(stat -c '%a' "$PANEL/artisan")"
-    other="${mode: -1}"
-    case "$other" in
-        2|3|6|7) die "artisan ist fuer andere beschreibbar." ;;
-    esac
+    if mode_go_writable "$mode"; then
+        die "artisan ist fuer die Gruppe oder andere beschreibbar."
+    fi
 }
 
 # -----------------------------------------------------------------------------
@@ -297,8 +360,8 @@ while [ $# -gt 0 ]; do
         --path=*)     PANEL="${1#*=}" ;;
         --branch)     BRANCH="${2:-}"; REF_EXPLICIT=1; shift ;;
         --branch=*)   BRANCH="${1#*=}"; REF_EXPLICIT=1 ;;
-        --tag)        BRANCH="${2:-}"; REF_EXPLICIT=1; shift ;;
-        --tag=*)      BRANCH="${1#*=}"; REF_EXPLICIT=1 ;;
+        --tag)        BRANCH="${2:-}"; REF_EXPLICIT=1; TAG_REQUESTED=1; shift ;;
+        --tag=*)      BRANCH="${1#*=}"; REF_EXPLICIT=1; TAG_REQUESTED=1 ;;
         --checksum)   CHECKSUM="${2:-}"; shift ;;
         --checksum=*) CHECKSUM="${1#*=}" ;;
         --yes|-y)     ASSUME_YES=1 ;;
@@ -340,6 +403,235 @@ real_dir() {
     return 0
 }
 
+# Absoluter Pfad, damit ein PATH-Hook python3 nicht ersetzen kann.
+python3_bin() {
+    local c
+    for c in /usr/bin/python3 /usr/local/bin/python3; do
+        if [ -x "$c" ]; then
+            printf '%s\n' "$c"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# rename/unlink/copy ueber Verzeichnis-Dateideskriptoren und O_NOFOLLOW.
+# mv, rm und cp loesen den Pfad danach neu auf; ein getauschter Parent
+# wuerde sonst in ein fremdes Verzeichnis schreiben oder es loeschen.
+fd_py() {
+    local py
+    py="$(python3_bin)" || die "python3 fehlt. Bitte installieren: apt install python3"
+    "$py" - "$@" <<'PY'
+import ctypes
+import os
+import stat
+import sys
+
+AT_REMOVEDIR = 0x200
+_libc = ctypes.CDLL(None, use_errno=True)
+
+
+def fail(msg):
+    sys.stderr.write(msg + "\n")
+    raise SystemExit(1)
+
+
+def unlink_at(dirfd, name, flags):
+    if _libc.unlinkat(int(dirfd), os.fsencode(name), int(flags)) != 0:
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err), name)
+
+
+def open_dir(parent, name):
+    return os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | os.O_CLOEXEC, dir_fd=parent)
+
+
+def safe_name(name):
+    if not name or name in (".", "..") or "/" in name or "\\" in name:
+        fail("ungueltiger name")
+
+
+def walk(root, rel):
+    if not rel or rel.startswith("/") or "\\" in rel:
+        fail("ungueltiger relativer pfad")
+    parts = [p for p in rel.split("/") if p != ""]
+    if not parts or any(p in (".", "..") for p in parts):
+        fail("ungueltiger relativer pfad")
+    fd = os.open(root, os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        for part in parts[:-1]:
+            nxt = open_dir(fd, part)
+            os.close(fd)
+            fd = nxt
+    except Exception:
+        os.close(fd)
+        raise
+    return fd, parts[-1]
+
+
+def rm_at(parent, name):
+    safe_name(name)
+    st = os.lstat(name, dir_fd=parent)
+    if stat.S_ISLNK(st.st_mode) or stat.S_ISREG(st.st_mode):
+        os.unlink(name, dir_fd=parent)
+        return
+    if not stat.S_ISDIR(st.st_mode):
+        fail("weder datei noch verzeichnis")
+    fd = open_dir(parent, name)
+    try:
+        for entry in os.listdir(fd):
+            if entry in (".", ".."):
+                continue
+            rm_at(fd, entry)
+    finally:
+        os.close(fd)
+    unlink_at(parent, name, AT_REMOVEDIR)
+
+
+def copy_from(parent, name, dest):
+    safe_name(name)
+    st = os.lstat(name, dir_fd=parent)
+    if not stat.S_ISREG(st.st_mode):
+        fail("keine regulaere datei")
+    src = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+    try:
+        out = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        try:
+            while True:
+                chunk = os.read(src, 1024 * 1024)
+                if not chunk:
+                    break
+                os.write(out, chunk)
+        finally:
+            os.close(out)
+    finally:
+        os.close(src)
+
+
+def publish(root, rel, src, kind):
+    parent, name = walk(root, rel)
+    try:
+        try:
+            st = os.lstat(name, dir_fd=parent)
+        except FileNotFoundError:
+            st = None
+        if st is not None and stat.S_ISLNK(st.st_mode):
+            fail("ziel ist ein symlink")
+        if kind == "dir":
+            if st is not None:
+                fail("ziel existiert bereits")
+        elif st is not None and not stat.S_ISREG(st.st_mode):
+            fail("ziel ist keine datei")
+        os.rename(src, name, dst_dir_fd=parent)
+    finally:
+        os.close(parent)
+
+
+def unlink_rel(root, rel):
+    parent, name = walk(root, rel)
+    try:
+        try:
+            os.lstat(name, dir_fd=parent)
+        except FileNotFoundError:
+            return
+        rm_at(parent, name)
+    finally:
+        os.close(parent)
+
+
+def snapshot(root, rel, dest_root):
+    parent, name = walk(root, rel)
+    try:
+        st = os.lstat(name, dir_fd=parent)
+        if stat.S_ISLNK(st.st_mode):
+            fail("symlink")
+        dest = os.path.join(dest_root, rel)
+        if stat.S_ISDIR(st.st_mode):
+            os.makedirs(dest, 0o700)
+            fd = open_dir(parent, name)
+            try:
+                for entry in os.listdir(fd):
+                    if entry in (".", ".."):
+                        continue
+                    safe_name(entry)
+                    est = os.lstat(entry, dir_fd=fd)
+                    if stat.S_ISLNK(est.st_mode) or not stat.S_ISREG(est.st_mode):
+                        fail("unsicherer verzeichniseintrag")
+                    copy_from(fd, entry, os.path.join(dest, entry))
+            finally:
+                os.close(fd)
+        elif stat.S_ISREG(st.st_mode):
+            os.makedirs(os.path.dirname(dest), 0o700)
+            copy_from(parent, name, dest)
+        else:
+            fail("weder datei noch verzeichnis")
+    finally:
+        os.close(parent)
+
+
+def open_nofollow_dir(path):
+    if os.path.islink(path):
+        fail("symlink")
+    return os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | os.O_CLOEXEC)
+
+
+def rename_into(directory, name, src):
+    safe_name(name)
+    fd = open_nofollow_dir(directory)
+    try:
+        try:
+            st = os.lstat(name, dir_fd=fd)
+        except FileNotFoundError:
+            st = None
+        if st is not None and stat.S_ISLNK(st.st_mode):
+            fail("ziel ist ein symlink")
+        os.rename(src, name, dst_dir_fd=fd)
+    finally:
+        os.close(fd)
+
+
+def unlink_child(directory, name):
+    fd = open_nofollow_dir(directory)
+    try:
+        try:
+            os.lstat(name, dir_fd=fd)
+        except FileNotFoundError:
+            return
+        rm_at(fd, name)
+    finally:
+        os.close(fd)
+
+
+def main():
+    if len(sys.argv) < 2:
+        fail("befehl fehlt")
+    cmd = sys.argv[1]
+    try:
+        if cmd == "publish-file" and len(sys.argv) == 5:
+            publish(sys.argv[2], sys.argv[3], sys.argv[4], "file")
+        elif cmd == "publish-dir" and len(sys.argv) == 5:
+            publish(sys.argv[2], sys.argv[3], sys.argv[4], "dir")
+        elif cmd == "unlink" and len(sys.argv) == 4:
+            unlink_rel(sys.argv[2], sys.argv[3])
+        elif cmd == "snapshot" and len(sys.argv) == 5:
+            snapshot(sys.argv[2], sys.argv[3], sys.argv[4])
+        elif cmd == "rename-into" and len(sys.argv) == 5:
+            rename_into(sys.argv[2], sys.argv[3], sys.argv[4])
+        elif cmd == "unlink-child" and len(sys.argv) == 4:
+            unlink_child(sys.argv[2], sys.argv[3])
+        else:
+            fail("unbekannter befehl")
+    except SystemExit:
+        raise
+    except OSError as exc:
+        fail(str(exc))
+
+
+if __name__ == "__main__":
+    main()
+PY
+}
+
 installer_dir() {
     local dir
     dir="$(dirname "${BASH_SOURCE[0]}")"
@@ -352,6 +644,18 @@ installer_dir() {
 
 need_tool() {
     command -v "$1" >/dev/null 2>&1 || die "Benoetigtes Programm fehlt: $1"
+}
+
+# --tag versucht refs/tags vor dem bloßen Namen. --branch bleibt bei refs/heads.
+source_archive_urls() {
+    local b="$1"
+    if [ "${TAG_REQUESTED:-0}" = "1" ]; then
+        printf '%s\n' "https://codeload.github.com/${REPO}/tar.gz/refs/tags/${b}"
+        printf '%s\n' "https://codeload.github.com/${REPO}/tar.gz/${b}"
+    else
+        printf '%s\n' "https://codeload.github.com/${REPO}/tar.gz/refs/heads/${b}"
+        printf '%s\n' "https://codeload.github.com/${REPO}/tar.gz/${b}"
+    fi
 }
 
 # Refs, die resolve_source versucht. Eine gesetzte Ref hat keinen Fallback.
@@ -434,6 +738,9 @@ resolve_source() {
         && [ -f "$here/scripts/build.sh" ] \
         && [ ! -L "$here/theme" ] \
         && [ ! -L "$here/scripts/build.sh" ]; then
+        if [ -n "$CHECKSUM" ] || [ "${TAG_REQUESTED:-0}" = "1" ]; then
+            die "--tag und --checksum gelten nur fuer den Download von GitHub. Aus einem lokalen Verzeichnis wuerden sie still ignoriert und werden deshalb abgelehnt."
+        fi
         SRC="$here"
         if [ "$(id -u)" = "0" ] && [ "$DO_CLI" = "1" ]; then
             tree_owned_by_root "$SRC" || die "Lokale Quelle gehoert nicht root oder ist beschreibbar. Vorher: chown -R root:root <quelle>"
@@ -469,9 +776,13 @@ resolve_source() {
     for b in "${branches[@]}"; do
         valid_ref "$b" || continue
         info "Lade Quelle von GitHub (Ref: $b) …"
-        # Dieselbe Ref als Branch-URL und als Tag/Commit/HEAD. Keine andere Ref.
-        for url in "https://codeload.github.com/${REPO}/tar.gz/refs/heads/${b}" \
-                   "https://codeload.github.com/${REPO}/tar.gz/${b}"; do
+        # --tag zuerst refs/tags, sonst zuerst refs/heads. Danach der bloße Name.
+        local -a urls=()
+        while IFS= read -r url; do
+            [ -n "$url" ] || continue
+            urls+=("$url")
+        done < <(source_archive_urls "$b")
+        for url in "${urls[@]}"; do
             rm -rf -- "${SRC_TMP:?}/"* 2>/dev/null || true
             rm -f -- "$SRC_TARBALL"
             if curl -fsSL --tlsv1.2 --proto '=https' --proto-redir '=https' --max-redirs 2 --retry 2 --max-time 60 \
@@ -527,20 +838,52 @@ detect_panel() {
         return
     fi
 
-    local c
+    local -a panel_hits=() weak=()
+    local c f d n=0 p seen u real
     for c in /var/www/pterodactyl /var/www/panel /var/www/html/pterodactyl /var/www/html/panel /srv/pterodactyl; do
-        if is_panel "$c" && parents_root_owned "$c"; then PANEL="$c"; harden_panel_path; return; fi
+        if is_panel "$c"; then
+            if parents_root_owned "$c"; then
+                panel_hits+=("$(realpath -e "$c")")
+            else
+                weak+=("$c")
+            fi
+        fi
     done
 
-    local f d n=0
     while IFS= read -r -d '' f; do
         n=$((n + 1))
         [ "$n" -le 20 ] || break
         [ -n "$f" ] || continue
         d="$(dirname "$f")"
-        if is_panel "$d" && parents_root_owned "$d"; then PANEL="$d"; harden_panel_path; return; fi
+        if is_panel "$d"; then
+            if parents_root_owned "$d"; then
+                panel_hits+=("$(realpath -e "$d")")
+            else
+                weak+=("$d")
+            fi
+        fi
     done < <(find /var/www /srv /opt -xdev -maxdepth 4 -name artisan -type f -print0 2>/dev/null || true)
 
+    local -a uniq=()
+    for p in "${panel_hits[@]+"${panel_hits[@]}"}"; do
+        [ -n "$p" ] || continue
+        seen=0
+        for u in "${uniq[@]+"${uniq[@]}"}"; do
+            [ "$u" = "$p" ] && seen=1
+        done
+        [ "$seen" = "0" ] || continue
+        uniq+=("$p")
+    done
+    fail_if_many_panels "${uniq[@]+"${uniq[@]}"}"
+    if [ "${#uniq[@]}" -eq 1 ]; then
+        PANEL="${uniq[0]}"
+        harden_panel_path
+        return
+    fi
+    if [ "${#weak[@]}" -gt 0 ]; then
+        real="$(realpath -e "${weak[0]}" 2>/dev/null || echo "${weak[0]}")"
+        panel_parent_advice "$real"
+    fi
     die "Panel nicht gefunden. Bitte mit --path /var/www/pterodactyl angeben."
 }
 
@@ -702,9 +1045,16 @@ stage_anchor() {
             printf '%s\n' "$dir"
             return 0
         fi
-        [ "$dir" = "/" ] && return 1
+        [ "$dir" = "/" ] && break
         dir="$(dirname "$dir")"
     done
+    # Eigenes Dateisystem: der Elternpfad liegt woanders. Der root-eigene
+    # Panel-Root bleibt ein gueltiger Anker fuer Dateien direkt im Panel.
+    if [ -n "${PANEL:-}" ] && [ "$dest_dir" = "$PANEL" ] && stage_anchor_safe "$PANEL" "$dev"; then
+        printf '%s\n' "$PANEL"
+        return 0
+    fi
+    return 1
 }
 
 stage_anchor_safe() {
@@ -753,8 +1103,13 @@ open_private_stage() {
     fi
     case "$stage" in
         "$dest_dir"|"$dest_dir"/*)
-            rm -rf -- "$stage"
-            die "Zwischenablage liegt im beschreibbaren Zielverzeichnis."
+            if [ "$anchor" = "$PANEL" ] && [ "$dest_dir" = "$PANEL" ] \
+                && stage_anchor_safe "$PANEL" "$(stat -c '%d' "$PANEL" 2>/dev/null || echo '')"; then
+                :
+            else
+                rm -rf -- "$stage"
+                die "Zwischenablage liegt im beschreibbaren Zielverzeichnis."
+            fi
             ;;
     esac
     if ! require_same_device "$stage" "$dest_dir"; then
@@ -773,8 +1128,126 @@ close_private_stage() {
     esac
 }
 
-# Ein einziges mv -T. Schlaegt die Elternpruefung fehl, bleibt die Zwischenablage
-# liegen und das Ziel wird nicht angefasst (kein rm am Zielpfad).
+# Vor der ersten Datei: Anker vorhersagen. Nach dem Siegeln muessen sie existieren.
+anchor_ready() {
+    local dest_dir="$1" dev
+    [ -d "$dest_dir" ] && [ ! -L "$dest_dir" ] || return 1
+    if stage_anchor "$dest_dir" >/dev/null; then
+        return 0
+    fi
+    [ "$(id -u)" = "0" ] || return 1
+    [ -d "$PANEL" ] && [ ! -L "$PANEL" ] || return 1
+    dev="$(stat -c '%d' "$dest_dir" 2>/dev/null || true)"
+    [ -n "$dev" ] && [ "$(stat -c '%d' "$PANEL" 2>/dev/null || true)" = "$dev" ]
+}
+
+preflight_anchors() {
+    local d
+    for d in "$PANEL" "$PANEL/resources" "$PANEL/resources/views" \
+        "$PANEL/resources/views/templates" "$PANEL/public"; do
+        if [ -L "$d" ] || [ ! -d "$d" ]; then
+            return 1
+        fi
+    done
+    if [ -L "$PANEL/resources/views/layouts" ]; then
+        return 1
+    fi
+    if [ -e "$PANEL/resources/views/layouts" ] && [ ! -d "$PANEL/resources/views/layouts" ]; then
+        return 1
+    fi
+    if [ -L "$PANEL/public/themes" ]; then
+        return 1
+    fi
+    if [ -e "$PANEL/public/themes" ] && [ ! -d "$PANEL/public/themes" ]; then
+        return 1
+    fi
+    anchor_ready "$PANEL/public" || return 1
+    anchor_ready "$PANEL/resources/views/templates" || return 1
+    anchor_ready "$PANEL" || return 1
+    return 0
+}
+
+# chown -h, danach erneut pruefen, erst dann chmod. chmod folgt dem letzten Glied.
+claim_dir() {
+    local path="$1" create="${2:-0}"
+    if [ -L "$path" ]; then
+        die "Verzeichnis ist ein Symlink und wird nicht angefasst: $(sanitize_text "$path")"
+    fi
+    if [ -e "$path" ] && [ ! -d "$path" ]; then
+        die "Pfad ist kein Verzeichnis: $(sanitize_text "$path")"
+    fi
+    if [ ! -e "$path" ]; then
+        [ "$create" = "1" ] || die "Verzeichnis fehlt: $(sanitize_text "$path")"
+        [ "$DRY_RUN" = "1" ] && return 0
+        mkdir -m 0755 -- "$path" || die "Verzeichnis konnte nicht angelegt werden: $(sanitize_text "$path")"
+    fi
+    if [ -L "$path" ] || [ ! -d "$path" ]; then
+        die "Verzeichnis ist ein Symlink und wird nicht angefasst: $(sanitize_text "$path")"
+    fi
+    [ "$DRY_RUN" = "1" ] && return 0
+    if [ "$(id -u)" = "0" ]; then
+        chown -h root:root -- "$path" || die "Besitzer konnte nicht gesetzt werden: $(sanitize_text "$path")"
+    fi
+    if [ -L "$path" ] || [ ! -d "$path" ]; then
+        die "Verzeichnis wurde waehrend des Siegelns ersetzt: $(sanitize_text "$path")"
+    fi
+    chmod 0755 -- "$path" || die "Rechte konnten nicht gesetzt werden: $(sanitize_text "$path")"
+    if [ -L "$path" ] || [ ! -d "$path" ]; then
+        die "Verzeichnis wurde waehrend des Siegelns ersetzt: $(sanitize_text "$path")"
+    fi
+    if [ "$(id -u)" = "0" ]; then
+        [ "$(stat -c '%u' "$path")" = "0" ] || die "Verzeichnis gehoert nach dem Siegeln nicht root: $(sanitize_text "$path")"
+    fi
+    if mode_go_writable "$(stat -c '%a' "$path")"; then
+        die "Verzeichnis ist nach dem Siegeln noch beschreibbar: $(sanitize_text "$path")"
+    fi
+}
+
+# Bei jedem Install, Update, Uninstall und Restore. Pterodactyl-Upgrades setzen
+# chown -R www-data auf den Baum; www-data koennte sonst resources oder public
+# gegen einen Symlink tauschen. storage und bootstrap/cache bleiben unberuehrt.
+prepare_panel_writes() {
+    [ -n "${PANEL:-}" ] || die "Panel-Pfad fehlt."
+    if [ ! -d "$PANEL" ] || [ -L "$PANEL" ]; then
+        die "Panel-Pfad ist kein Verzeichnis."
+    fi
+    preflight_anchors || die "Keine sichere Zwischenablage auf demselben Dateisystem. Abbruch vor der ersten Aenderung."
+    claim_dir "$PANEL" 0
+    claim_dir "$PANEL/resources" 0
+    claim_dir "$PANEL/resources/views" 0
+    claim_dir "$PANEL/resources/views/templates" 0
+    claim_dir "$PANEL/resources/views/layouts" 1
+    claim_dir "$PANEL/public" 0
+    claim_dir "$PANEL/public/themes" 1
+    if [ "$DRY_RUN" = "1" ]; then
+        return 0
+    fi
+    anchor_ready "$PANEL/public/themes" || die "Zwischenablage nach dem Siegeln nicht verfuegbar. Es wurden noch keine Theme-Dateien geschrieben."
+    anchor_ready "$PANEL/resources/views/templates" || die "Zwischenablage nach dem Siegeln nicht verfuegbar. Es wurden noch keine Theme-Dateien geschrieben."
+    anchor_ready "$PANEL" || die "Zwischenablage nach dem Siegeln nicht verfuegbar. Es wurden noch keine Theme-Dateien geschrieben."
+}
+
+# Temporaere Arbeit nur unter einem existierenden Elternverzeichnis.
+# Als root muss dieses root gehoeren.
+private_workdir() {
+    local d parent
+    d="$(mktemp -d)"
+    if [ -z "$d" ] || [ -L "$d" ] || [ ! -d "$d" ]; then
+        die "Temporaeres Verzeichnis unsicher."
+    fi
+    chmod 700 "$d" || { rm -rf -- "$d"; die "Temporaeres Verzeichnis nicht schuetzbar."; }
+    parent="$(dirname "$d")"
+    if [ "$(id -u)" = "0" ]; then
+        if [ -L "$parent" ] || [ "$(stat -c '%u' "$parent" 2>/dev/null || echo '')" != "0" ]; then
+            rm -rf -- "$d"
+            die "Build-Verzeichnis liegt nicht unter einem root-eigenen Elternverzeichnis."
+        fi
+    fi
+    printf '%s\n' "$d"
+}
+
+# Veroeffentlichen per renameat. Schlaegt die Elternpruefung fehl, bleibt die
+# Zwischenablage liegen und das Ziel wird nicht angefasst.
 publish_file() {
     local staged="$1" dest="$2" rel="$3" dir real
     dir="$(dirname "$dest")"
@@ -787,7 +1260,7 @@ publish_file() {
     if ! parent_still_real "$dest" "$rel"; then
         return 1
     fi
-    if ! mv -T -- "$staged" "$dest"; then
+    if ! fd_py publish-file "$PANEL" "$rel" "$staged"; then
         return 1
     fi
     if ! regular_file "$dest"; then
@@ -813,7 +1286,7 @@ publish_tree_dir() {
     if ! parent_still_real "$dest" "$rel"; then
         return 1
     fi
-    if ! mv -T -- "$staged" "$dest"; then
+    if ! fd_py publish-dir "$PANEL" "$rel" "$staged"; then
         return 1
     fi
     if ! path_is_confined "$rel" || ! real_dir "$dest"; then
@@ -837,12 +1310,9 @@ stage_file_into() {
     fi
     chmod "$mode" "$tmp" || { close_private_stage "$stage"; die "chmod fehlgeschlagen."; }
     if [ "$(id -u)" = "0" ]; then
-        # Besitzer nur an der Zwischenablage setzen, nie per Pfad nach dem mv.
-        if [ -e "$dest" ] && [ ! -L "$dest" ] && parent_still_real "$dest" "$rel" && regular_file "$dest"; then
-            chown -h --reference="$dest" "$tmp" || { close_private_stage "$stage"; die "Besitzer konnte nicht gesetzt werden."; }
-        else
-            chown -h root:root "$tmp" || { close_private_stage "$stage"; die "Besitzer konnte nicht gesetzt werden."; }
-        fi
+        # Immer root. Nie den Besitzer der Zieldatei uebernehmen: der folgt sonst
+        # einem von www-data getauschten Verzeichnis in ein fremdes Root-Ziel.
+        chown -h root:root -- "$tmp" || { close_private_stage "$stage"; die "Besitzer konnte nicht gesetzt werden."; }
     fi
     if ! require_same_device "$stage" "$dir"; then
         close_private_stage "$stage"
@@ -907,22 +1377,16 @@ discard_panel_path() {
     if ! parent_still_real "$target" "$rel"; then
         return 1
     fi
-    if [ -L "$target" ]; then
-        parent_still_real "$target" "$rel" || return 1
-        rm -f -- "$target"
-        return 0
-    fi
-    if [ -d "$target" ]; then
-        path_is_confined "$rel" || return 1
-        real_dir "$target" || return 1
-        parent_still_real "$target" "$rel" || return 1
-        rm -rf -- "$target"
-        return 0
-    fi
-    regular_file "$target" || return 1
     path_is_confined "$rel" || return 1
+    if [ -L "$target" ]; then
+        :
+    elif [ -d "$target" ]; then
+        real_dir "$target" || return 1
+    else
+        regular_file "$target" || return 1
+    fi
     parent_still_real "$target" "$rel" || return 1
-    rm -f -- "$target"
+    fd_py unlink "$PANEL" "$rel"
 }
 
 safe_reset_theme_dir() {
@@ -1134,22 +1598,22 @@ swap_lib_dir() {
         chmod 700 "$old" || { rm -rf -- "$stage" "$old"; die "Zwischenname nicht schuetzbar."; }
         rmdir -- "$old" || { rm -rf -- "$stage"; die "Zwischenname nicht frei."; }
         real_dir "$parent" || { rm -rf -- "$stage"; die "CLI-Elternverzeichnis unsicher."; }
-        if ! mv -T -- "$LIB_DIR" "$old"; then
+        if ! fd_py rename-into "$parent" "$(basename "$old")" "$LIB_DIR"; then
             rm -rf -- "$stage"
             die "CLI-Verzeichnis konnte nicht beiseitegelegt werden."
         fi
     fi
     real_dir "$parent" || {
         if [ -n "$old" ] && [ -e "$old" ]; then
-            mv -T -- "$old" "$LIB_DIR" || true
+            fd_py rename-into "$parent" "$(basename "$LIB_DIR")" "$old" || true
         fi
         rm -rf -- "$stage"
         die "CLI-Elternverzeichnis unsicher."
     }
-    if ! mv -T -- "$stage" "$LIB_DIR"; then
+    if ! fd_py rename-into "$parent" "$(basename "$LIB_DIR")" "$stage"; then
         rm -rf -- "$stage"
         if [ -n "$old" ] && [ -e "$old" ]; then
-            if ! mv -T -- "$old" "$LIB_DIR"; then
+            if ! fd_py rename-into "$parent" "$(basename "$LIB_DIR")" "$old"; then
                 die "Rollback des CLI-Verzeichnisses fehlgeschlagen. Altbestand: $old"
             fi
         fi
@@ -1262,8 +1726,7 @@ make_backup() {
 
     prepare_backup_root
     local private archive_tmp
-    private="$(mktemp -d)"
-    chmod 700 "$private" || { rm -rf -- "$private"; die "Backup-Kopie nicht schuetzbar."; }
+    private="$(private_workdir)"
     if ! snapshot_panel_files "$private" "${files[@]}"; then
         rm -rf -- "$private"
         die "Backup-Quelle wurde ersetzt oder ist unsicher."
@@ -1284,7 +1747,12 @@ make_backup() {
         chown root:root "$archive_tmp"
     fi
     real_dir "$BACKUP_ROOT" || { rm -f -- "$archive_tmp"; die "Backup-Verzeichnis unsicher."; }
-    mv -T -- "$archive_tmp" "$archive"
+    if [ -L "$BACKUP_ROOT/latest" ]; then
+        rm -f -- "$archive_tmp"
+        die "Backup-Zeiger ist ein Symlink."
+    fi
+    fd_py rename-into "$BACKUP_ROOT" "$(basename "$archive")" "$archive_tmp" \
+        || { rm -f -- "$archive_tmp"; die "Backup konnte nicht abgelegt werden."; }
     printf '%s\n' "$archive" > "$BACKUP_ROOT/latest"
     chmod 600 "$BACKUP_ROOT/latest"
     ok "Backup: $(sanitize_text "$archive")"
@@ -1293,40 +1761,20 @@ make_backup() {
 # Kopiert nur gepruefte regulaere Dateien. tar liest danach diese Kopie,
 # nicht den von www-data beschreibbaren Panel-Baum.
 snapshot_panel_files() {
-    local dest_root="$1" rel src parent f base
+    local dest_root="$1" rel src
     shift
     for rel in "$@"; do
         [ -n "$rel" ] || return 1
         src="$PANEL/$rel"
-        parent="$(dirname "$src")"
+        path_is_confined "$rel" || return 1
         parent_still_real "$src" "$rel" || return 1
         if [ -d "$src" ] && [ ! -L "$src" ]; then
             real_dir "$src" || return 1
-            if find -P "$src" -type l -print -quit | grep -q .; then
-                return 1
-            fi
-            mkdir -p -- "$dest_root/$rel"
-            for f in "$src"/*; do
-                [ -e "$f" ] || [ -L "$f" ] || continue
-                base="$(basename "$f")"
-                real_dir "$src" || return 1
-                parent_still_real "$src" "$rel" || return 1
-                regular_file "$f" || return 1
-                cp -P -- "$f" "$dest_root/$rel/$base" || return 1
-                if [ -L "$dest_root/$rel/$base" ] || [ ! -f "$dest_root/$rel/$base" ]; then
-                    return 1
-                fi
-            done
         else
             regular_file "$src" || return 1
-            parent_still_real "$src" "$rel" || return 1
-            [ ! -L "$src" ] || return 1
-            mkdir -p -- "$dest_root/$(dirname "$rel")"
-            cp -P -- "$src" "$dest_root/$rel" || return 1
-            if [ -L "$dest_root/$rel" ] || [ ! -f "$dest_root/$rel" ]; then
-                return 1
-            fi
         fi
+        parent_still_real "$src" "$rel" || return 1
+        fd_py snapshot "$PANEL" "$rel" "$dest_root" || return 1
     done
     return 0
 }
@@ -1349,6 +1797,7 @@ restore_backup() {
     [ "$owner" = "root" ] || die "Backup gehoert nicht root: $real"
     archive_is_safe "$real" || die "Backup-Archiv enthaelt unsichere Pfade oder Links."
     confirm "Backup '$real' nach $PANEL zuruecksichern?" || { info "Abgebrochen."; return 0; }
+    prepare_panel_writes
     if [ "$DRY_RUN" != "1" ]; then
         local extract
         extract="$(mktemp -d)"
@@ -1407,7 +1856,15 @@ write_state() {
     branch="$(json_escape "$BRANCH")"
     pv="$(json_escape "$(panel_version || true)")"
     now="$(json_escape "$(date -Iseconds)")"
-    local tmp
+    local tmp tag sum
+    tag=""
+    sum=""
+    if [ "${TAG_REQUESTED:-0}" = "1" ]; then
+        tag="$(json_escape "$BRANCH")"
+    fi
+    if [ -n "$CHECKSUM" ]; then
+        sum="$(json_escape "$(printf '%s' "$CHECKSUM" | tr 'A-F' 'a-f')")"
+    fi
     tmp="$(mktemp)"
     cat > "$tmp" <<JSON
 {
@@ -1416,6 +1873,8 @@ write_state() {
   "version": "${ver}",
   "asset_version": "${asset}",
   "branch": "${branch}",
+  "tag": "${tag}",
+  "checksum": "${sum}",
   "installed_at": "${now}",
   "panel_version": "${pv}",
   "files": ["resources/views/templates/wrapper.blade.php", "resources/views/layouts/admin.blade.php", "public/themes/nebula"]
@@ -1437,6 +1896,18 @@ read_state() {
 # -----------------------------------------------------------------------------
 # CLI-Helfer
 # -----------------------------------------------------------------------------
+# Flags, die nebula update wieder an den Installer gibt. Leer, wenn nicht gesetzt.
+cli_pin_args() {
+    if [ "${TAG_REQUESTED:-0}" = "1" ]; then
+        printf '%s\n' --tag
+        printf '%s\n' "$BRANCH"
+    fi
+    if [ -n "${CHECKSUM:-}" ]; then
+        printf '%s\n' --checksum
+        printf '%s\n' "$(printf '%s' "$CHECKSUM" | tr 'A-F' 'a-f')"
+    fi
+}
+
 install_cli() {
     [ "$DO_CLI" = "1" ] || return 0
     if [ "$DRY_RUN" = "1" ]; then
@@ -1445,9 +1916,17 @@ install_cli() {
     fi
     swap_lib_dir "$SRC"
 
-    local qlib qpanel clitemp
+    local qlib qpanel clitemp pin_tag="" pin_sum="" qtag qsum
     printf -v qlib '%q' "$LIB_DIR"
     printf -v qpanel '%q' "$PANEL"
+    if [ "${TAG_REQUESTED:-0}" = "1" ]; then
+        printf -v qtag '%q' "$BRANCH"
+        pin_tag="--tag $qtag"
+    fi
+    if [ -n "${CHECKSUM:-}" ]; then
+        printf -v qsum '%q' "$(printf '%s' "$CHECKSUM" | tr 'A-F' 'a-f')"
+        pin_sum="--checksum $qsum"
+    fi
     clitemp="$(mktemp "$(dirname "$CLI_PATH")/.nebula-cli.XXXXXX")"
     cat > "$clitemp" <<CLI
 #!/usr/bin/env bash
@@ -1456,8 +1935,8 @@ set -euo pipefail
 LIB=$qlib
 PANEL_ARG=(--path $qpanel)
 case "\${1:-help}" in
-    install)   shift; exec bash "\$LIB/install.sh" --install   "\${PANEL_ARG[@]}" "\$@" ;;
-    update)    shift; exec bash "\$LIB/install.sh" --update    "\${PANEL_ARG[@]}" "\$@" ;;
+    install)   shift; exec bash "\$LIB/install.sh" --install   "\${PANEL_ARG[@]}" $pin_tag $pin_sum "\$@" ;;
+    update)    shift; exec bash "\$LIB/install.sh" --update    "\${PANEL_ARG[@]}" $pin_tag $pin_sum "\$@" ;;
     uninstall) shift; exec bash "\$LIB/install.sh" --uninstall "\${PANEL_ARG[@]}" "\$@" ;;
     doctor)    shift; exec bash "\$LIB/install.sh" --doctor    "\${PANEL_ARG[@]}" "\$@" ;;
     status)    shift; exec bash "\$LIB/install.sh" --status    "\${PANEL_ARG[@]}" "\$@" ;;
@@ -1478,7 +1957,8 @@ CLI
         [ "$(stat -c '%u' "$(dirname "$CLI_PATH")")" = "0" ] || die "CLI-Verzeichnis gehoert nicht root."
     fi
     real_dir "$(dirname "$CLI_PATH")" || die "CLI-Verzeichnis unsicher."
-    mv -T -- "$clitemp" "$CLI_PATH"
+    fd_py rename-into "$(dirname "$CLI_PATH")" "$(basename "$CLI_PATH")" "$clitemp" \
+        || die "CLI-Befehl konnte nicht ersetzt werden."
     ok "Befehl installiert: ${C_B}nebula${C_RESET}"
 }
 
@@ -1508,13 +1988,14 @@ do_install() {
     fi
 
     confirm "Nebula in '$(sanitize_text "$PANEL")' installieren?" || { info "Abgebrochen."; exit 0; }
+    prepare_panel_writes
 
     step "2/6  Backup anlegen"
     make_backup
 
     step "3/6  Theme bauen"
     local build_dir asset
-    build_dir="$(mktemp -d)"
+    build_dir="$(private_workdir)"
     bash "$SRC/scripts/build.sh" "$build_dir" >/dev/null
     asset="$(cat "$build_dir/ASSET_VERSION")"
     ok "Bundles erstellt (Asset-Version $asset)"
@@ -1573,12 +2054,12 @@ remove_lib_dir() {
     fi
     real_dir "$parent" || die "CLI-Elternverzeichnis unsicher."
     if [ -L "$LIB_DIR" ]; then
-        rm -f -- "$LIB_DIR"
+        fd_py unlink-child "$parent" "$(basename "$LIB_DIR")" || die "CLI-Symlink konnte nicht entfernt werden."
         return 0
     fi
     real_dir "$LIB_DIR" || die "CLI-Verzeichnis ist kein echtes Verzeichnis."
     real_dir "$parent" || die "CLI-Elternverzeichnis unsicher."
-    rm -rf -- "$LIB_DIR"
+    fd_py unlink-child "$parent" "$(basename "$LIB_DIR")" || die "CLI-Verzeichnis konnte nicht entfernt werden."
 }
 
 # -----------------------------------------------------------------------------
@@ -1588,6 +2069,7 @@ do_uninstall() {
     step "Nebula entfernen"
     info "Panel: $(sanitize_text "$PANEL")"
     confirm "Theme aus '$(sanitize_text "$PANEL")' entfernen?" || { info "Abgebrochen."; exit 0; }
+    prepare_panel_writes
 
     strip_block "$PANEL/$WRAPPER_REL"
     [ "$DRY_RUN" = "1" ] || ok "Block aus $WRAPPER_REL entfernt."

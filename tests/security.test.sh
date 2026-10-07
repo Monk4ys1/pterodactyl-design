@@ -44,6 +44,12 @@ mkdir -p "$tmp/in/safe"
 printf 'ok\n' > "$tmp/in/safe/a.txt"
 tar -czf "$tmp/ok.tgz" -C "$tmp/in" safe/a.txt
 archive_is_safe "$tmp/ok.tgz" || fail "safe archive rejected"
+if member_rejected "theme/"; then fail "directory member rejected"; fi
+if member_rejected "public/themes/nebula/"; then fail "nested directory member rejected"; fi
+if member_rejected "theme/css/nebula.css"; then fail "file member rejected"; fi
+member_rejected "foo//bar" || fail "double slash accepted"
+member_rejected "/etc/passwd" || fail "absolute member accepted"
+member_rejected "" || fail "empty member accepted"
 
 tar -czf "$tmp/bad.tgz" -C "$tmp/in" --transform='s|^safe/a.txt|../evil.txt|' safe/a.txt
 if archive_is_safe "$tmp/bad.tgz"; then fail "traversal archive accepted"; fi
@@ -313,15 +319,15 @@ fi
 [ ! -d "$tree_out/nebula" ] || fail "theme dir leaked through a symlinked parent"
 grep -qx 'secret' "$tree_out/pwned" || fail "theme publish clobbered the outside file"
 
-# safe_reset_theme_dir: mv kann den Elternpfad noch tauschen. Danach darf nichts
-# ausserhalb geloescht werden (kein rm/rmdir am Ziel).
+# safe_reset_theme_dir darf mv nicht benutzen. Ein Hook, der den Parent zwischen
+# Pruefung und mv tauscht, darf weder ausserhalb anlegen noch das Panel als Symlink lassen.
 reset_panel="$(realpath -e "$(mktemp -d "$tmp/resetpanel.XXXXXX")")"
 reset_out="$(realpath -e "$(mktemp -d "$tmp/resetout.XXXXXX")")"
 mkdir -p "$reset_panel/public/themes"
 printf 'secret\n' > "$reset_out/pwned"
 printf 'keep\n' > "$reset_out/keep-me"
 PANEL="$reset_panel"
-if (
+if ! (
     # shellcheck disable=SC2030,SC2031
     PATH="$wrap:$PATH"
     ATTACK_PARENT="$reset_panel/public/themes"
@@ -330,8 +336,11 @@ if (
     export PATH ATTACK_PARENT ATTACK_TARGET ATTACK_OUT
     safe_reset_theme_dir
 ) >/dev/null 2>&1; then
-    fail "safe_reset_theme_dir kept a directory created through a swapped parent"
+    fail "safe_reset_theme_dir failed inside a real panel"
 fi
+[ ! -L "$reset_panel/public/themes" ] || fail "safe_reset left public/themes as a symlink"
+[ -d "$reset_panel/public/themes/nebula" ] || fail "safe_reset did not create the theme directory"
+[ ! -e "$reset_out/nebula" ] || fail "safe_reset created a theme directory outside the panel"
 grep -qx 'secret' "$reset_out/pwned" || fail "safe_reset_theme_dir clobbered the outside file"
 grep -qx 'keep' "$reset_out/keep-me" || fail "safe_reset_theme_dir removed an outside file"
 
@@ -472,6 +481,244 @@ if ( PANEL="$pre_panel"; safe_reset_theme_dir ) >/dev/null 2>&1; then
     fail "safe_reset accepted a symlinked themes directory"
 fi
 grep -qx 'stay' "$pre_out/nebula/keep" || fail "safe_reset deleted an outside theme tree"
+
+# Tausch-Hook: mv/rm/cp auf dem Panel-Pfad tauschen den Parent, bevor das echte
+# Programm laeuft. Publish, rm, Backup und Asset-Publish duerfen den Hook nicht
+# ausloesen und nichts ausserhalb anlegen oder loeschen.
+race_panel="$(realpath -e "$(mktemp -d "$tmp/racepanel.XXXXXX")")"
+race_out="$(realpath -e "$(mktemp -d "$tmp/raceout.XXXXXX")")"
+race_wrap="$(mktemp -d "$tmp/racewrap.XXXXXX")"
+race_log="$(mktemp)"
+mkdir -p "$race_panel/resources/views/templates" "$race_panel/resources/views/layouts" \
+    "$race_panel/public/themes/nebula" "$race_out/nebula"
+PANEL="$race_panel"
+printf 'BLADE\n' > "$race_panel/$WRAPPER_REL"
+printf 'OLD\n' > "$race_panel/$THEME_REL/nebula.css"
+printf 'secret\n' > "$race_out/pwned"
+printf 'keep\n' > "$race_out/nebula/keep"
+printf 'payload\n' > "$tmp/payload"
+real_cp="$(command -v cp)"
+real_mv="$(command -v mv)"
+real_rm="$(command -v rm)"
+cat > "$race_wrap/cp" <<EOF
+#!/bin/bash
+printf 'cp %s\n' "\$*" >> "$race_log"
+hit=0
+for a in "\$@"; do
+    case "\$a" in
+        "\${ATTACK_PARENT:-}"|"\${ATTACK_TARGET:-}"|"\${ATTACK_TARGET:-}"/*) hit=1 ;;
+    esac
+done
+if [ "\$hit" = "1" ]; then
+    ${real_rm} -rf -- "\$ATTACK_PARENT"
+    ln -s "\$ATTACK_OUT" "\$ATTACK_PARENT"
+fi
+exec ${real_cp} "\$@"
+EOF
+cat > "$race_wrap/mv" <<EOF
+#!/bin/bash
+printf 'mv %s\n' "\$*" >> "$race_log"
+dest="\${@: -1}"
+if [ -n "\${ATTACK_PARENT:-}" ] && { [ "\$dest" = "\${ATTACK_TARGET:-}" ] || [ "\$dest" = "\${ATTACK_PARENT:-}" ]; }; then
+    ${real_rm} -rf -- "\$ATTACK_PARENT"
+    ln -s "\$ATTACK_OUT" "\$ATTACK_PARENT"
+fi
+exec ${real_mv} "\$@"
+EOF
+cat > "$race_wrap/rm" <<EOF
+#!/bin/bash
+printf 'rm %s\n' "\$*" >> "$race_log"
+hit=0
+for a in "\$@"; do
+    case "\$a" in
+        "\${ATTACK_PARENT:-}"|"\${ATTACK_TARGET:-}"|"\${ATTACK_TARGET:-}"/*) hit=1 ;;
+    esac
+done
+if [ "\$hit" = "1" ]; then
+    ${real_rm} -rf -- "\$ATTACK_PARENT"
+    ln -s "\$ATTACK_OUT" "\$ATTACK_PARENT"
+    exec ${real_rm} "\$@"
+fi
+exec ${real_rm} "\$@"
+EOF
+chmod 755 "$race_wrap/cp" "$race_wrap/mv" "$race_wrap/rm"
+
+race_env() {
+    # shellcheck disable=SC2030,SC2031
+    PATH="$race_wrap:$PATH"
+    ATTACK_PARENT="$race_panel/public/themes"
+    ATTACK_TARGET="$race_panel/public/themes/nebula"
+    ATTACK_OUT="$race_out"
+    export PATH ATTACK_PARENT ATTACK_TARGET ATTACK_OUT
+}
+
+(
+    race_env
+    safe_install_file "$race_panel/public/themes/nebula/nebula.css" "$tmp/payload"
+) >/dev/null
+grep -qx 'payload' "$race_panel/public/themes/nebula/nebula.css" || fail "hooked publish missed the panel file"
+[ ! -L "$race_panel/public/themes" ] || fail "hooked publish turned themes into a symlink"
+grep -qx 'secret' "$race_out/pwned" || fail "hooked publish clobbered the outside file"
+grep -qx 'keep' "$race_out/nebula/keep" || fail "hooked publish removed the outside tree"
+
+(
+    race_env
+    discard_panel_path "$race_panel/public/themes/nebula" "public/themes/nebula"
+) >/dev/null
+[ ! -e "$race_panel/public/themes/nebula" ] || fail "hooked discard left the theme directory"
+[ ! -L "$race_panel/public/themes" ] || fail "hooked discard turned themes into a symlink"
+grep -qx 'keep' "$race_out/nebula/keep" || fail "hooked rm -rf deleted the outside tree"
+
+mkdir -p "$race_panel/public/themes/nebula"
+printf 'CSS\n' > "$race_panel/public/themes/nebula/nebula.css"
+snap_race="$(mktemp -d "$tmp/snaprace.XXXXXX")"
+(
+    race_env
+    snapshot_panel_files "$snap_race" "$WRAPPER_REL" "$THEME_REL"
+) || fail "hooked snapshot failed"
+grep -qx 'BLADE' "$snap_race/$WRAPPER_REL" || fail "hooked snapshot missed blade"
+grep -qx 'CSS' "$snap_race/$THEME_REL/nebula.css" || fail "hooked snapshot missed css"
+grep -qx 'keep' "$race_out/nebula/keep" || fail "hooked backup copy deleted the outside tree"
+if grep -R -q 'secret' "$snap_race"; then fail "hooked snapshot stored outside bytes"; fi
+
+race_build="$(mktemp -d "$tmp/racebuild.XXXXXX")"
+printf 'built\n' > "$race_build/nebula.css"
+printf 'built\n' > "$race_build/nebula.js"
+printf '{}\n' > "$race_build/theme.json"
+printf '2.0.0-abc123def0\n' > "$race_build/ASSET_VERSION"
+(
+    race_env
+    PANEL="$race_panel"
+    install_built_assets "$race_build"
+) >/dev/null
+grep -qx 'built' "$race_panel/public/themes/nebula/nebula.css" || fail "hooked asset publish missed css"
+[ ! -L "$race_panel/public/themes" ] || fail "hooked asset publish left a symlink"
+[ ! -e "$race_out/nebula/nebula.css" ] || fail "hooked asset publish wrote outside"
+grep -qx 'keep' "$race_out/nebula/keep" || fail "hooked asset publish deleted the outside tree"
+if grep -E '^(cp|mv|rm) ' "$race_log" | grep -F "$race_panel/public/themes/nebula" >/dev/null; then
+    fail "published path was passed to cp/mv/rm: $(grep -F "$race_panel/public/themes/nebula" "$race_log")"
+fi
+
+# Schon vorher getauschter Parent: rm folgt ihm nicht.
+rm -rf "$race_panel/public/themes"
+ln -s "$race_out" "$race_panel/public/themes"
+if discard_panel_path "$race_panel/public/themes/nebula" "public/themes/nebula"; then
+    fail "discard followed a themes symlink"
+fi
+grep -qx 'keep' "$race_out/nebula/keep" || fail "symlink discard deleted the outside tree"
+rm -f "$race_panel/public/themes"
+mkdir -p "$race_panel/public/themes"
+
+# Siegel bricht bei einem Symlink ab und chmod folgt ihm nicht.
+seal_out="$(realpath -e "$(mktemp -d "$tmp/sealout.XXXXXX")")"
+printf 'x\n' > "$seal_out/marker"
+chmod 700 "$seal_out"
+seal_before="$(stat -c '%a %u' "$seal_out")"
+rm -rf "$race_panel/public/themes"
+ln -s "$seal_out" "$race_panel/public/themes"
+PANEL="$race_panel"
+if ( prepare_panel_writes ) >/dev/null 2>&1; then
+    fail "seal accepted a symlinked public/themes"
+fi
+seal_after="$(stat -c '%a %u' "$seal_out")"
+[ "$seal_before" = "$seal_after" ] || fail "seal chmod followed the themes symlink"
+rm -f "$race_panel/public/themes"
+mkdir -p "$race_panel/public/themes"
+PANEL="$race_panel"
+prepare_panel_writes >/dev/null
+if [ ! -d "$race_panel/public/themes" ] || [ -L "$race_panel/public/themes" ]; then
+    fail "seal did not leave a real themes directory"
+fi
+if [ ! -d "$race_panel/resources/views/layouts" ] || [ -L "$race_panel/resources/views/layouts" ]; then
+    fail "seal missed layouts"
+fi
+[ "$(stat -c '%a' "$race_panel/public")" = "755" ] || fail "public was not sealed to 0755"
+[ "$(stat -c '%a' "$race_panel")" = "755" ] || fail "panel root was not sealed to 0755"
+
+# Echte Archive: git archive und eine codeload-Huelle mit Top-Level-Verzeichnis.
+if command -v git >/dev/null 2>&1; then
+    git -C "$ROOT" archive --format=tar.gz -o "$tmp/git-head.tgz" HEAD
+    archive_is_safe "$tmp/git-head.tgz" || fail "real git archive rejected"
+    code_top="$(mktemp -d "$tmp/codeload.XXXXXX")"
+    mkdir -p "$code_top/Monk4ys1-pterodactyl-design-deadbeef"
+    tar -xzf "$tmp/git-head.tgz" -C "$code_top/Monk4ys1-pterodactyl-design-deadbeef"
+    tar -czf "$tmp/codeload.tgz" -C "$code_top" Monk4ys1-pterodactyl-design-deadbeef
+    archive_is_safe "$tmp/codeload.tgz" || fail "codeload-style archive rejected"
+fi
+
+# Backup-Restore nach dem Verzeichnis-Fix: Bytes kommen zurueck.
+restore_panel="$(realpath -e "$(mktemp -d "$tmp/restorepanel.XXXXXX")")"
+mkdir -p "$restore_panel/resources/views/templates" "$restore_panel/public/themes/nebula"
+printf 'BLADE\n' > "$restore_panel/$WRAPPER_REL"
+printf 'CSS\n' > "$restore_panel/$THEME_REL/nebula.css"
+saved_backup="$BACKUP_ROOT"
+saved_do_backup="$DO_BACKUP"
+BACKUP_ROOT="$tmp/restore-backups/nebula"
+DO_BACKUP=1
+PANEL="$restore_panel"
+make_backup
+restore_archive="$(head -n 1 "$BACKUP_ROOT/latest")"
+archive_is_safe "$restore_archive" || fail "backup archive rejected"
+restore_extract="$(mktemp -d "$tmp/restore-extract.XXXXXX")"
+tar -xzf "$restore_archive" -C "$restore_extract"
+printf 'MUT\n' > "$restore_panel/$THEME_REL/nebula.css"
+printf 'MUT\n' > "$restore_panel/$WRAPPER_REL"
+restore_members_from "$restore_extract"
+grep -qx 'CSS' "$restore_panel/$THEME_REL/nebula.css" || fail "restore did not return css"
+grep -qx 'BLADE' "$restore_panel/$WRAPPER_REL" || fail "restore did not return blade"
+BACKUP_ROOT="$saved_backup"
+DO_BACKUP="$saved_do_backup"
+
+if mode_go_writable 755; then fail "0755 treated as group or other writable"; fi
+mode_go_writable 775 || fail "0775 not treated as group writable"
+mode_go_writable 757 || fail "0757 not treated as other writable"
+if ( fail_if_many_panels /var/www/pterodactyl /srv/pterodactyl ) >/dev/null 2>&1; then
+    fail "two autodetect hits accepted"
+fi
+fail_if_many_panels /var/www/pterodactyl
+advice="$( ( panel_parent_advice /var/www/pterodactyl ) 2>&1 || true )"
+printf '%s\n' "$advice" | grep -q 'chown root:root /var/www' || fail "autodetect advice missing chown"
+printf '%s\n' "$advice" | grep -q 'chmod 755 /var/www' || fail "autodetect advice missing chmod"
+
+saved_tag="${TAG_REQUESTED:-0}"
+saved_branch="$BRANCH"
+saved_sum="${CHECKSUM:-}"
+TAG_REQUESTED=1
+first_url="$(source_archive_urls v2.0.0 | head -n 1)"
+case "$first_url" in
+    */refs/tags/v2.0.0) ;;
+    *) fail "tag download does not try refs/tags first: $first_url" ;;
+esac
+TAG_REQUESTED=0
+first_url="$(source_archive_urls main | head -n 1)"
+case "$first_url" in
+    */refs/heads/main) ;;
+    *) fail "branch download does not try refs/heads first: $first_url" ;;
+esac
+if ( CHECKSUM="$good_sum"; TAG_REQUESTED=0; resolve_source ) >/dev/null 2>&1; then
+    fail "local checkout accepted --checksum"
+fi
+if ( CHECKSUM=""; TAG_REQUESTED=1; BRANCH="v2.0.0"; resolve_source ) >/dev/null 2>&1; then
+    fail "local checkout accepted --tag"
+fi
+TAG_REQUESTED=1
+BRANCH="v2.0.0"
+CHECKSUM="$good_sum"
+pin_out="$(cli_pin_args)"
+printf '%s\n' "$pin_out" | grep -qx -- '--tag' || fail "cli pin missing --tag"
+printf '%s\n' "$pin_out" | grep -qx 'v2.0.0' || fail "cli pin missing tag value"
+printf '%s\n' "$pin_out" | grep -qx -- '--checksum' || fail "cli pin missing --checksum"
+printf '%s\n' "$pin_out" | grep -qx "$good_sum" || fail "cli pin missing checksum"
+TAG_REQUESTED=0
+CHECKSUM=""
+[ -z "$(cli_pin_args)" ] || fail "cli pin set without tag or checksum"
+TAG_REQUESTED="$saved_tag"
+BRANCH="$saved_branch"
+CHECKSUM="$saved_sum"
+
+if grep -n -- '--reference' "$ROOT/install.sh"; then
+    fail "installer still takes ownership from the destination"
+fi
 
 bash -n "$ROOT/install.sh"
 bash -n "$ROOT/scripts/build.sh"
